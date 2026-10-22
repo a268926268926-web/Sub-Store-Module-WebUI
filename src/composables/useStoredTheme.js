@@ -29,23 +29,25 @@ function setThemeMode(nextMode) {
   storedMode.value = VALID_MODES.has(nextMode) ? nextMode : 'system'
 }
 
-function waitForNextFrame() {
-  if (typeof requestAnimationFrame !== 'function') return Promise.resolve()
-  return new Promise((resolve) => {
-    requestAnimationFrame(() => requestAnimationFrame(resolve))
-  })
-}
+let activeViewTransition
 
 export async function withThemeTransition(update) {
   const apply = async () => {
     await update()
     await nextTick()
-    await waitForNextFrame()
   }
   const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
   if (!reducedMotion && typeof document.startViewTransition === 'function') {
+    activeViewTransition?.skipTransition?.()
     const transition = document.startViewTransition(apply)
-    await transition?.updateCallbackDone?.catch?.(() => {})
+    activeViewTransition = transition
+    try {
+      await transition?.updateCallbackDone
+    } catch {
+      /* A newer theme action superseded this transition. */
+    } finally {
+      if (activeViewTransition === transition) activeViewTransition = undefined
+    }
     return
   }
   await apply()

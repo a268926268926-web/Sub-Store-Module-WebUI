@@ -7,16 +7,23 @@ import {
   GitFork,
   Heart,
   PackageOpen,
-  Scale,
+  Cpu,
   Sparkles,
   X,
 } from '@lucide/vue'
 import { showToast } from '../composables/useToast'
+import { MODULE_VERSION } from '../api/module'
 
-const relatedProjects = [
-  { name: '模块仓库', url: 'https://github.com/lanyi233/Sub-Store-Module', icon: PackageOpen },
-  { name: 'WebUI 仓库', url: 'https://github.com/Delusions6515/Sub-Store-Module-WebUI', icon: Sparkles },
-  { name: 'Sub-Store', url: 'https://github.com/sub-store-org/Sub-Store', icon: GitFork },
+const maintenanceProjects = [
+  { name: '模块仓库', description: '模块脚本、构建与更新入口', url: 'https://github.com/a268926268926-web/Sub-Store-Module', icon: PackageOpen },
+  { name: 'WebUI 仓库', description: 'M3E 界面、交互与主题系统', url: 'https://github.com/a268926268926-web/Sub-Store-Module-WebUI', icon: Sparkles },
+  { name: 'Node Android 构建', description: 'arm64 Node 运行时与 release', url: 'https://github.com/a268926268926-web/node-android-build', icon: Cpu },
+]
+
+const upstreamProjects = [
+  { name: 'Sub-Store 后端', description: '订阅转换与后端服务', url: 'https://github.com/sub-store-org/Sub-Store', icon: GitFork },
+  { name: 'Sub-Store Front-End', description: '上游 Sub-Store 前端', url: 'https://github.com/sub-store-org/Sub-Store-Front-End', icon: Sparkles },
+  { name: 'HTTP-META', description: 'JS、模板与内核更新源', url: 'https://github.com/xream/http-meta', icon: PackageOpen },
 ]
 
 function openLink(url) {
@@ -83,24 +90,21 @@ async function openSponsor(method) {
     </div>
     <div>
       <p class="brand-story__kicker">MAGISK · KERNELSU · APATCH</p>
-      <h2 class="brand-story__title">Sub-Store for Android</h2>
+      <div class="brand-story__heading">
+        <h2 class="brand-story__title">Sub-Store for Android</h2>
+        <span v-if="MODULE_VERSION" class="brand-story__version">{{ MODULE_VERSION }}</span>
+      </div>
       <p class="brand-story__copy">
         以系统级服务运行 Sub-Store 与 HTTP-META，并把服务、组件更新和配置入口放进一个原生风格的 WebUI。
       </p>
     </div>
   </section>
 
-  <div class="section-heading">
-    <div class="section-heading__copy">
-      <h2 class="section-heading__title">相关项目</h2>
-      <p class="section-heading__subtitle">源代码与上游依赖</p>
-    </div>
-    <GitFork :size="20" color="var(--md-sys-color-primary)" />
-  </div>
+  <div class="section-heading"><h2 class="section-heading__title">维护项目</h2></div>
   <div class="m3e-card">
     <div class="m3e-list">
       <button
-        v-for="project in relatedProjects"
+        v-for="project in maintenanceProjects"
         :key="project.name"
         type="button"
         class="m3e-list-row"
@@ -111,20 +115,36 @@ async function openSponsor(method) {
         </span>
         <span class="m3e-list-row__copy">
           <p class="m3e-list-row__title">{{ project.name }}</p>
-          <p class="m3e-list-row__summary">{{ project.url }}</p>
+          <p class="m3e-list-row__summary">{{ project.description }}</p>
         </span>
         <ExternalLink :size="18" color="var(--md-sys-color-on-surface-variant)" />
       </button>
     </div>
   </div>
 
-  <div class="section-heading">
-    <div class="section-heading__copy">
-      <h2 class="section-heading__title">赞助我们</h2>
-      <p class="section-heading__subtitle">支持模块和上游项目的持续维护</p>
+  <div class="section-heading"><h2 class="section-heading__title">上游依赖</h2></div>
+  <div class="m3e-card">
+    <div class="m3e-list">
+      <button
+        v-for="project in upstreamProjects"
+        :key="project.name"
+        type="button"
+        class="m3e-list-row"
+        @click="openLink(project.url)"
+      >
+        <span class="m3e-list-row__icon">
+          <component :is="project.icon" :size="21" />
+        </span>
+        <span class="m3e-list-row__copy">
+          <p class="m3e-list-row__title">{{ project.name }}</p>
+          <p class="m3e-list-row__summary">{{ project.description }}</p>
+        </span>
+        <ExternalLink :size="18" color="var(--md-sys-color-on-surface-variant)" />
+      </button>
     </div>
-    <Heart :size="20" color="var(--md-sys-color-error)" />
   </div>
+
+  <div class="section-heading"><h2 class="section-heading__title">赞助我们</h2></div>
   <div class="m3e-card">
     <div class="m3e-list">
       <button
@@ -146,13 +166,7 @@ async function openSponsor(method) {
     </div>
   </div>
 
-  <div class="section-heading">
-    <div class="section-heading__copy">
-      <h2 class="section-heading__title">许可</h2>
-      <p class="section-heading__subtitle">遵循上游项目许可分发</p>
-    </div>
-    <Scale :size="20" color="var(--md-sys-color-primary)" />
-  </div>
+  <div class="section-heading"><h2 class="section-heading__title">许可</h2></div>
   <div class="m3e-card m3e-card__body">
     <strong>GPL-3.0</strong>
     <p style="margin: 5px 0 0; color: var(--md-sys-color-on-surface-variant); font-size: 13px">
@@ -207,19 +221,19 @@ async function openSponsor(method) {
   display: flex;
   align-items: flex-start;
   gap: 18px;
-  margin: 4px 4px 28px;
-  padding: 22px 0 24px;
-  border-top: 1px solid var(--md-sys-color-outline-variant);
-  border-bottom: 1px solid var(--md-sys-color-outline-variant);
+  margin: 4px 0 24px;
+  padding: 24px;
+  border-radius: var(--m3e-radius-lg);
+  background: var(--md-sys-color-surface-bright);
 }
 
 .brand-story__icon {
   display: grid;
   flex: none;
   place-items: center;
-  width: 72px;
-  height: 72px;
-  border-radius: 26px 14px 24px 16px;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
   background: var(--md-sys-color-primary-container);
   color: var(--md-sys-color-on-primary-container);
 }
@@ -227,22 +241,39 @@ async function openSponsor(method) {
 .brand-story__kicker {
   margin: 2px 0 5px;
   color: var(--md-sys-color-primary);
-  font-size: 11px;
-  font-weight: 750;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .brand-story__title {
   margin: 0;
-  font-size: 24px;
-  font-weight: 780;
+  font-size: 25px;
+  font-weight: 600;
   line-height: 1.15;
+}
+
+.brand-story__heading {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.brand-story__version {
+  padding: 2px 8px;
+  border-radius: var(--m3e-radius-full);
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.7;
 }
 
 .brand-story__copy {
   max-width: 58ch;
   margin: 9px 0 0;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 14px;
+  font-size: 15px;
   line-height: 1.65;
 }
 
@@ -254,11 +285,11 @@ async function openSponsor(method) {
   .brand-story__icon {
     width: 58px;
     height: 58px;
-    border-radius: 22px 12px 20px 14px;
+    border-radius: 50%;
   }
 
   .brand-story__title {
-    font-size: 21px;
+    font-size: 23px;
   }
 }
 </style>

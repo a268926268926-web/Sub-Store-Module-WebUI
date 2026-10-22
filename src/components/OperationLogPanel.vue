@@ -2,12 +2,14 @@
 import { ref, watch } from 'vue'
 import { TerminalSquare } from '@lucide/vue'
 import '@fontsource-variable/jetbrains-mono/wght.css'
+import M3LoadingIndicator from './M3LoadingIndicator.vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
   content: { type: String, default: '' },
   title: { type: String, required: true },
   fill: { type: Boolean, default: false },
+  loading: { type: Boolean, default: false },
 })
 
 const boxRef = ref(null)
@@ -37,7 +39,8 @@ watch(
         <h2 class="section-heading__title">{{ title }}</h2>
         <p class="section-heading__subtitle">后台执行输出，完成后保留本次结果</p>
       </div>
-      <TerminalSquare :size="20" color="var(--md-sys-color-primary)" />
+      <M3LoadingIndicator v-if="loading" :size="22" label="后台任务执行中" />
+      <TerminalSquare v-else :size="20" color="var(--md-sys-color-primary)" />
     </div>
     <div
       ref="boxRef"

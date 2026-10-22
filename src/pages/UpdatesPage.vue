@@ -14,6 +14,7 @@ import { useModuleState } from '../composables/useModuleState'
 import { useOperationLog } from '../composables/useOperationLog'
 import { showToast } from '../composables/useToast'
 import M3Select from '../components/M3Select.vue'
+import M3LoadingIndicator from '../components/M3LoadingIndicator.vue'
 import OperationLogPanel from '../components/OperationLogPanel.vue'
 import * as moduleApi from '../api/module'
 
@@ -224,25 +225,27 @@ onDeactivated(stopAutoPolling)
       <p class="section-heading__subtitle">稳定渠道 · Alpha 内核需要手动选择</p>
     </div>
   </div>
-  <div class="m3e-card m3e-card__body">
+  <div class="m3e-card m3e-card__body manual-update-card">
     <M3Select
       v-model="selectedCommand"
       label="更新项"
       :options="options"
       :disabled="pending"
     />
-    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px">
-      <span style="color: var(--md-sys-color-on-surface-variant); font-size: 13px">
+    <div class="update-action-row">
+      <span>
         选择组件范围后在后台执行
       </span>
       <button
         type="button"
         class="m3e-button"
+        :class="{ 'is-loading': pending }"
         :disabled="pending"
         @click="handleManualUpdate"
       >
-        <RefreshCw :size="18" :class="{ 'is-spinning': pending }" />
-        {{ pending ? '更新中…' : '开始更新' }}
+        <M3LoadingIndicator v-if="pending" :size="20" tone="inherit" />
+        <RefreshCw v-else :size="18" />
+        {{ pending ? '更新中' : '开始更新' }}
       </button>
     </div>
   </div>
@@ -254,7 +257,7 @@ onDeactivated(stopAutoPolling)
     </div>
     <span class="m3e-chip" :class="autoStatusTone">{{ autoStatusText }}</span>
   </div>
-  <div class="m3e-card m3e-card__body">
+  <div class="m3e-card m3e-card__body auto-update-card">
     <div class="auto-update-header">
       <span class="auto-update-header__icon">
         <CalendarClock :size="24" />
@@ -311,20 +314,28 @@ onDeactivated(stopAutoPolling)
         <button
           type="button"
           class="m3e-button m3e-button--tonal"
+          :class="{ 'is-loading': autoSaving }"
           :disabled="autoSaving || autoLoading"
           @click="saveAutoPlan"
         >
-          <Save :size="18" />
-          {{ autoSaving ? '保存中…' : '保存计划' }}
+          <M3LoadingIndicator v-if="autoSaving" :size="19" tone="inherit" />
+          <Save v-else :size="18" />
+          {{ autoSaving ? '保存中' : '保存计划' }}
         </button>
         <button
           type="button"
           class="m3e-button m3e-button--outline"
+          :class="{ 'is-loading': autoRunPending || autoStatus?.running }"
           :disabled="autoRunPending || pending || autoStatus?.running"
           @click="runAutoNow"
         >
-          <Play :size="18" />
-          {{ autoRunPending || autoStatus?.running ? '执行中…' : '立即测试' }}
+          <M3LoadingIndicator
+            v-if="autoRunPending || autoStatus?.running"
+            :size="19"
+            tone="inherit"
+          />
+          <Play v-else :size="18" />
+          {{ autoRunPending || autoStatus?.running ? '执行中' : '立即测试' }}
         </button>
       </div>
     </div>
@@ -354,16 +365,82 @@ onDeactivated(stopAutoPolling)
     </div>
   </div>
 
-  <OperationLogPanel :visible="visible" :content="content" title="更新日志" fill />
+  <OperationLogPanel
+    :visible="visible"
+    :content="content"
+    :loading="pending || autoRunPending"
+    title="更新日志"
+    fill
+  />
   </div>
 </template>
 
 <style scoped>
-.is-spinning {
-  animation: spin 900ms linear infinite;
+.manual-update-card,
+.auto-update-card {
+  background: var(--md-sys-color-surface-container-high);
 }
 
-@keyframes spin {
-  to { transform: rotate(360deg); }
+.update-action-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 44%, transparent);
+}
+
+.update-action-row span {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.auto-update-header {
+  gap: 16px;
+}
+
+.auto-update-header__icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 0;
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.auto-update-header__title {
+  font-size: 18px;
+  font-weight: 610;
+}
+
+.auto-update-header__summary {
+  margin-top: 4px;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.auto-update-controls {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 44%, transparent);
+}
+
+.auto-update-status {
+  margin-top: 20px;
+  border-radius: var(--m3e-radius-md);
+  background: var(--md-sys-color-surface-container-lowest);
+}
+
+@media (max-width: 420px) {
+  .update-action-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .update-action-row .m3e-button {
+    align-self: flex-end;
+    width: auto;
+  }
 }
 </style>

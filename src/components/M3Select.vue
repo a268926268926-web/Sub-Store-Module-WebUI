@@ -163,9 +163,9 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 14px;
   width: 100%;
-  min-height: 58px;
-  padding: 8px 16px;
-  border: 1px solid var(--md-sys-color-outline-variant);
+  min-height: 64px;
+  padding: 9px 16px;
+  border: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 45%, transparent);
   border-radius: var(--m3e-radius-md);
   background: var(--md-sys-color-surface-container-lowest);
   color: var(--md-sys-color-on-surface);
@@ -178,9 +178,19 @@ onBeforeUnmount(() => {
   background: var(--md-sys-color-surface-container-low);
 }
 
+:root[data-theme='dark'] .m3-select__trigger {
+  border-color: transparent;
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+:root[data-theme='dark'] .m3-select__trigger:hover {
+  background: var(--md-sys-color-surface-container-highest);
+  filter: brightness(1.06);
+}
+
 .m3-select__trigger[aria-expanded='true'] {
   border-color: var(--md-sys-color-primary);
-  border-radius: 14px 22px 14px 22px;
+  border-radius: var(--m3e-radius-md);
 }
 
 .m3-select__trigger:disabled {
@@ -197,16 +207,16 @@ onBeforeUnmount(() => {
 
 .m3-select__copy strong,
 .m3-select__option strong {
-  font-size: 15px;
-  font-weight: 700;
+  font-size: 17px;
+  font-weight: 610;
 }
 
 .m3-select__copy small,
 .m3-select__option small {
   overflow: hidden;
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 12px;
-  line-height: 1.35;
+  font-size: 14px;
+  line-height: 1.4;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -222,7 +232,7 @@ onBeforeUnmount(() => {
 .m3-select__options {
   display: grid;
   gap: 2px;
-  padding: 0 10px 12px;
+  padding: 0 10px 14px;
 }
 
 .m3-select__option {
@@ -230,7 +240,7 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 14px;
   width: 100%;
-  min-height: 58px;
+  min-height: 66px;
   padding: 10px 14px;
   border: 0;
   border-radius: var(--m3e-radius-md);
@@ -246,8 +256,8 @@ onBeforeUnmount(() => {
 }
 
 .m3-select__option.is-selected {
-  background: var(--md-sys-color-secondary-container);
-  color: var(--md-sys-color-on-secondary-container);
+  background: var(--md-sys-color-primary-container);
+  color: var(--md-sys-color-on-primary-container);
 }
 
 .m3-select__option-copy {
@@ -261,6 +271,19 @@ onBeforeUnmount(() => {
   .m3-select__backdrop {
     place-items: center;
     padding: calc(32px + var(--top-inset)) 32px calc(32px + var(--bottom-inset));
+  }
+}
+
+@media (max-width: 360px) {
+  .m3-select__trigger {
+    min-height: 72px;
+  }
+
+  .m3-select__copy small {
+    display: -webkit-box;
+    white-space: normal;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
   }
 }
 </style>

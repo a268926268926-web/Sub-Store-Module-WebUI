@@ -6,15 +6,16 @@ import {
   Monitor,
   Moon,
   PackageOpen,
-  RefreshCw,
   Settings2,
   Sun,
   X,
 } from '@lucide/vue'
 import { isBrowserDev, MODULE_VERSION, requestFullScreen } from './api/module'
 import { useMonetTheme } from './composables/useMonetTheme'
+import { useModuleState } from './composables/useModuleState'
 import { useStoredTheme } from './composables/useStoredTheme'
 import { useToast } from './composables/useToast'
+import PageLoading from './components/PageLoading.vue'
 
 const subtitle = MODULE_VERSION ? `v${MODULE_VERSION}` : ''
 useMonetTheme()
@@ -29,26 +30,18 @@ const pages = [
 const navItems = [
   {
     title: '概览',
-    eyebrow: 'SUB-STORE ANDROID',
-    description: '服务状态、访问入口与运行控制集中在这里。',
     icon: LayoutDashboard,
   },
   {
     title: '更新',
-    eyebrow: 'COMPONENTS & SCHEDULE',
-    description: '管理手动组件更新，以及关闭页面后仍会执行的后台计划。',
     icon: PackageOpen,
   },
   {
     title: '配置',
-    eyebrow: 'SERVICE & ENVIRONMENT',
-    description: '调整 M3E 外观、开机行为、访问路径和 Sub-Store 运行环境。',
     icon: Settings2,
   },
   {
     title: '关于',
-    eyebrow: 'PROJECT INFORMATION',
-    description: '上游项目、维护者、许可与模块来源。',
     icon: Info,
   },
 ]
@@ -56,6 +49,9 @@ const navItems = [
 const navIndex = ref(0)
 const activePage = computed(() => pages[navIndex.value])
 const activeNav = computed(() => navItems[navIndex.value])
+const pagePending = ref(false)
+const { busy, loading } = useModuleState()
+const showProgress = computed(() => pagePending.value || busy.value || loading.value)
 
 const { mode, setThemeMode } = useStoredTheme()
 const themeIcon = computed(() => {
@@ -90,7 +86,9 @@ watch(
     }
     nextTick(() => {
       if (scrollerRef.value) {
-        scrollerRef.value.scrollTop = scrollPositions.get(navIndex.value) ?? 0
+        const nextScroll = scrollPositions.get(navIndex.value) ?? 0
+        scrollerRef.value.scrollTop = nextScroll
+        isScrolled.value = nextScroll > 8
       }
     })
   },
@@ -113,13 +111,7 @@ onMounted(() => {
 <template>
   <div class="app-shell">
     <header class="top-app-bar" :class="{ 'is-scrolled': isScrolled }">
-      <div class="brand-mark" aria-hidden="true">
-        <RefreshCw :size="21" :stroke-width="2.2" />
-      </div>
-      <div class="top-app-bar__copy">
-        <p class="top-app-bar__title">Sub-Store Android</p>
-        <p class="top-app-bar__subtitle">{{ subtitle || 'KernelSU WebUI' }}</p>
-      </div>
+      <p class="top-app-bar__page-title">{{ activeNav.title }}</p>
       <div class="top-app-bar__actions">
         <button
           type="button"
@@ -131,20 +123,24 @@ onMounted(() => {
           <component :is="themeIcon" :size="22" :stroke-width="2" />
         </button>
       </div>
+      <span v-if="showProgress" class="app-progress" aria-label="正在处理" />
     </header>
 
     <main class="app-viewport">
       <div ref="scrollerRef" class="app-scroll" @scroll.passive="handleScroll">
         <div class="page-content" :data-module-version="subtitle">
           <header class="page-hero">
-            <p class="page-hero__eyebrow">{{ activeNav.eyebrow }}</p>
             <h1 class="page-hero__title">{{ activeNav.title }}</h1>
-            <p class="page-hero__description">{{ activeNav.description }}</p>
           </header>
           <Transition name="page" mode="out-in">
-            <KeepAlive>
-              <component :is="activePage" :key="navIndex" />
-            </KeepAlive>
+            <Suspense @pending="pagePending = true" @resolve="pagePending = false">
+              <KeepAlive>
+                <component :is="activePage" :key="navIndex" />
+              </KeepAlive>
+              <template #fallback>
+                <PageLoading />
+              </template>
+            </Suspense>
           </Transition>
         </div>
       </div>

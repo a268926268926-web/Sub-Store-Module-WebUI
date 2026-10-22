@@ -3,6 +3,7 @@ import { computed, onActivated, ref } from 'vue'
 import {
   CircleCheck,
   CircleStop,
+  ChevronRight,
   ExternalLink,
   Link2,
   Play,
@@ -16,6 +17,7 @@ import { useModuleState } from '../composables/useModuleState'
 import { useOperationLog } from '../composables/useOperationLog'
 import { showToast } from '../composables/useToast'
 import OperationLogPanel from '../components/OperationLogPanel.vue'
+import M3LoadingIndicator from '../components/M3LoadingIndicator.vue'
 import * as moduleApi from '../api/module'
 
 const { status, busy, error, refreshStatus, runAction } = useModuleState()
@@ -30,22 +32,22 @@ const metricItems = computed(() => {
     {
       label: '开机自启',
       value: status.value.autostart ? '已启用' : '已禁用',
-      tone: status.value.autostart ? 'success' : 'warning',
+      icon: Power,
     },
     {
       label: '配置状态',
       value: status.value.configModified ? '等待重启' : '正常',
-      tone: status.value.configModified ? 'warning' : 'success',
+      icon: CircleCheck,
     },
     {
       label: '运行用户',
       value: status.value.runUserIsRoot ? 'ROOT' : 'SHELL',
-      tone: status.value.runUserIsRoot ? 'warning' : 'success',
+      icon: ShieldAlert,
     },
     {
       label: '后端模式',
       value: status.value.mergeMode ? '合并端口' : '前后端分离',
-      tone: 'neutral',
+      icon: Server,
     },
   ]
 })
@@ -147,34 +149,41 @@ const securityIssues = computed(() => {
 
 <template>
   <div class="overview-page">
-  <section class="m3e-card m3e-card--hero">
-    <div class="status-hero">
-      <div class="status-hero__icon">
-        <Server :size="30" :stroke-width="2" />
+  <div class="m3e-card service-summary-card">
+    <div class="m3e-list">
+      <div class="m3e-list-row service-state-row">
+        <span class="m3e-list-row__icon">
+          <Server :size="23" />
+        </span>
+        <div class="m3e-list-row__copy">
+          <p class="m3e-list-row__title">Sub-Store 核心服务</p>
+          <p class="m3e-list-row__summary">
+            {{ status?.serviceRunning ? '运行中' : '未运行' }} ·
+            {{ status?.mergeMode ? '合并端口' : '前后端分离' }}
+          </p>
+        </div>
+        <span
+          class="m3e-chip"
+          :class="status?.serviceRunning ? 'm3e-chip--success' : 'm3e-chip--error'"
+        >
+          <CircleCheck v-if="status?.serviceRunning" :size="14" />
+          <CircleStop v-else :size="14" />
+          {{ status?.serviceRunning ? '运行中' : '已停止' }}
+        </span>
       </div>
-      <div class="status-hero__copy">
-        <p class="status-hero__label">Sub-Store 核心服务</p>
-        <p class="status-hero__value">
-          {{ status?.serviceRunning ? '运行中' : '未运行' }}
-        </p>
+      <div class="status-metrics" aria-label="服务状态摘要">
+        <div v-for="item in metricItems" :key="item.label" class="status-metric">
+          <span class="status-metric__icon">
+            <component :is="item.icon" :size="20" />
+          </span>
+          <span class="status-metric__copy">
+            <span class="status-metric__label">{{ item.label }}</span>
+            <strong class="status-metric__value">{{ item.value }}</strong>
+          </span>
+        </div>
       </div>
-      <span
-        class="m3e-chip"
-        :class="status?.serviceRunning ? 'm3e-chip--success' : 'm3e-chip--error'"
-      >
-        <CircleCheck v-if="status?.serviceRunning" :size="14" />
-        <CircleStop v-else :size="14" />
-        {{ status?.serviceRunning ? 'ONLINE' : 'OFFLINE' }}
-      </span>
     </div>
-
-    <div class="metric-grid">
-      <div v-for="item in metricItems" :key="item.label" class="metric-tile">
-        <p class="metric-tile__label">{{ item.label }}</p>
-        <p class="metric-tile__value">{{ item.value }}</p>
-      </div>
-    </div>
-  </section>
+  </div>
 
   <div class="section-heading">
     <div class="section-heading__copy">
@@ -210,7 +219,7 @@ const securityIssues = computed(() => {
     <div class="m3e-card">
       <div class="m3e-list">
         <div v-for="issue in securityIssues" :key="issue.title" class="m3e-list-row">
-          <span class="m3e-list-row__icon" style="background: var(--md-sys-color-tertiary-container)">
+          <span class="m3e-list-row__icon">
             <ShieldAlert :size="20" />
           </span>
           <div class="m3e-list-row__copy">
@@ -228,39 +237,45 @@ const securityIssues = computed(() => {
       <p class="section-heading__subtitle">操作在后台执行，不会阻塞当前页面</p>
     </div>
   </div>
-  <div class="m3e-card m3e-card__body">
-    <div class="m3e-button-row">
+  <div class="m3e-card">
+    <div class="m3e-list">
       <button
+        v-for="action in [
+          { name: 'start', title: '启动服务', summary: '拉起 Sub-Store、HTTP-META 与前端', icon: Play },
+          { name: 'stop', title: '停止服务', summary: '停止当前运行中的全部服务', icon: Square },
+          { name: 'restart', title: '重启服务', summary: '重新载入配置并重启全部组件', icon: RotateCw },
+        ]"
+        :key="action.name"
         type="button"
-        class="m3e-button m3e-button--tonal"
-        :disabled="pendingAction || status?.serviceRunning"
-        @click="handleServiceAction('start')"
+        class="m3e-list-row"
+        :class="{ 'is-loading': pendingAction && currentAction === action.name }"
+        :disabled="pendingAction || (action.name === 'start' && status?.serviceRunning) || (action.name === 'stop' && !status?.serviceRunning)"
+        @click="handleServiceAction(action.name)"
       >
-        <Play :size="18" />
-        {{ pendingAction && currentAction === 'start' ? '执行中…' : '启动' }}
-      </button>
-      <button
-        type="button"
-        class="m3e-button m3e-button--danger"
-        :disabled="pendingAction || !status?.serviceRunning"
-        @click="handleServiceAction('stop')"
-      >
-        <Square :size="17" />
-        {{ pendingAction && currentAction === 'stop' ? '执行中…' : '停止' }}
-      </button>
-      <button
-        type="button"
-        class="m3e-button"
-        :disabled="pendingAction"
-        @click="handleServiceAction('restart')"
-      >
-        <RotateCw :size="18" />
-        {{ pendingAction && currentAction === 'restart' ? '执行中…' : '重启' }}
+        <span class="m3e-list-row__icon">
+          <component :is="action.icon" :size="22" />
+        </span>
+        <span class="m3e-list-row__copy">
+          <span class="m3e-list-row__title">{{ action.title }}</span>
+          <span class="m3e-list-row__summary">{{ action.summary }}</span>
+        </span>
+        <M3LoadingIndicator
+          v-if="pendingAction && currentAction === action.name"
+          :size="21"
+          tone="inherit"
+          :label="`${action.title}执行中`"
+        />
+        <ChevronRight v-else :size="20" class="row-chevron" />
       </button>
     </div>
   </div>
 
-  <OperationLogPanel :visible="visible" :content="content" title="本次操作日志" />
+  <OperationLogPanel
+    :visible="visible"
+    :content="content"
+    :loading="pendingAction"
+    title="本次操作日志"
+  />
 
   <div v-if="error" class="m3e-error">
     <Power :size="18" />
@@ -268,3 +283,76 @@ const securityIssues = computed(() => {
   </div>
   </div>
 </template>
+
+<style scoped>
+.service-state-row {
+  min-height: 82px;
+}
+
+.status-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  border-radius: 5px 5px var(--m3e-radius-lg) var(--m3e-radius-lg);
+  background: var(--md-sys-color-surface);
+}
+
+.status-metric {
+  display: flex;
+  min-width: 0;
+  min-height: 78px;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 16px;
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.status-metric__icon {
+  display: grid;
+  flex: none;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.status-metric__copy {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.status-metric__label {
+  overflow: hidden;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+  line-height: 1.3;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.status-metric__value {
+  overflow-wrap: anywhere;
+  color: var(--md-sys-color-on-surface);
+  font-size: 15px;
+  font-weight: 570;
+  line-height: 1.35;
+}
+
+.row-chevron {
+  flex: none;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+button.m3e-list-row:disabled {
+  cursor: not-allowed;
+  opacity: 0.38;
+}
+
+@media (max-width: 360px) {
+  .service-state-row .m3e-chip {
+    display: none;
+  }
+}
+</style>
