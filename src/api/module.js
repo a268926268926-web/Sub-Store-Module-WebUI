@@ -125,11 +125,11 @@ export async function getAutoUpdateLog() {
 }
 
 // 后台执行：先同步轮转旧日志（新 run.log 只含本次输出），再 nohup 后台运行。
-// 服务控制（start/stop/restart）与更新（update-*）都走这里，页面传完整子命令。
+// 服务控制与更新都走这里；命令和参数分开传给 spawn，避免被 shell 当成单个 argv。
 // update-* 在 webui.sh 内不轮转，必须在此先行 log-reset，否则会追加到上次的旧日志。
-export async function runBackground(name) {
+export async function runBackground(name, args = []) {
   await runModuleCommand(`sh ${WEBUI_SCRIPT} log-reset`)
-  spawn('sh', [WEBUI_SCRIPT, name])
+  if (!isBrowserDev) spawn('sh', [WEBUI_SCRIPT, name, ...args])
   return { ok: true, errno: 0, stdout: '', stderr: '' }
 }
 

@@ -1,4 +1,4 @@
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useStorage } from './useStorage'
 
 const VALID_MODES = new Set(['system', 'light', 'dark'])
@@ -27,6 +27,28 @@ mediaQuery?.addEventListener?.('change', (event) => {
 
 function setThemeMode(nextMode) {
   storedMode.value = VALID_MODES.has(nextMode) ? nextMode : 'system'
+}
+
+function waitForNextFrame() {
+  if (typeof requestAnimationFrame !== 'function') return Promise.resolve()
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(resolve))
+  })
+}
+
+export async function withThemeTransition(update) {
+  const apply = async () => {
+    await update()
+    await nextTick()
+    await waitForNextFrame()
+  }
+  const reducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+  if (!reducedMotion && typeof document.startViewTransition === 'function') {
+    const transition = document.startViewTransition(apply)
+    await transition?.updateCallbackDone?.catch?.(() => {})
+    return
+  }
+  await apply()
 }
 
 export function useStoredTheme() {

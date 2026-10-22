@@ -76,6 +76,11 @@ function cycleTheme() {
 
 const scrollerRef = ref(null)
 const scrollPositions = new Map()
+const isScrolled = ref(false)
+
+function handleScroll(event) {
+  isScrolled.value = event.currentTarget.scrollTop > 8
+}
 
 watch(
   navIndex,
@@ -107,7 +112,7 @@ onMounted(() => {
 
 <template>
   <div class="app-shell">
-    <header class="top-app-bar">
+    <header class="top-app-bar" :class="{ 'is-scrolled': isScrolled }">
       <div class="brand-mark" aria-hidden="true">
         <RefreshCw :size="21" :stroke-width="2.2" />
       </div>
@@ -129,7 +134,7 @@ onMounted(() => {
     </header>
 
     <main class="app-viewport">
-      <div ref="scrollerRef" class="app-scroll">
+      <div ref="scrollerRef" class="app-scroll" @scroll.passive="handleScroll">
         <div class="page-content" :data-module-version="subtitle">
           <header class="page-hero">
             <p class="page-hero__eyebrow">{{ activeNav.eyebrow }}</p>

@@ -1,6 +1,7 @@
 <script setup>
 import { computed, defineAsyncComponent, onMounted, ref, watch } from 'vue'
 import {
+  Check,
   FileCode2,
   Monitor,
   Moon,
@@ -13,12 +14,22 @@ import {
 } from '@lucide/vue'
 import { useModuleState } from '../composables/useModuleState'
 import { useMonetTheme } from '../composables/useMonetTheme'
-import { useStoredTheme } from '../composables/useStoredTheme'
+import { useStoredTheme, withThemeTransition } from '../composables/useStoredTheme'
 import * as moduleApi from '../api/module'
+import { createMonetPalettes } from '../theme/monet'
 
 const { status, busy, refreshStatus, runAction } = useModuleState()
 const { mode, setThemeMode } = useStoredTheme()
-const { monetEnabled } = useMonetTheme()
+const {
+  monetEnabled,
+  themePalette,
+  themeSeed,
+  colorSource,
+  hostSeedAvailable,
+  effectiveSeed,
+  paletteStyleOptions,
+  themeSeedOptions,
+} = useMonetTheme()
 
 const themeModes = [
   { value: 'system', label: '系统', icon: Monitor },
@@ -26,10 +37,48 @@ const themeModes = [
   { value: 'dark', label: '深色', icon: Moon },
 ]
 
-const currentThemeMode = computed({
-  get: () => mode.value,
-  set: (value) => setThemeMode(value),
-})
+const currentThemeMode = computed(() => mode.value)
+const displayedColorSource = computed(() => (
+  hostSeedAvailable.value ? colorSource.value : 'seed'
+))
+const paletteStylePreviews = computed(() => paletteStyleOptions.map((style) => {
+  const palette = createMonetPalettes(effectiveSeed.value, style.value)?.light
+  return {
+    ...style,
+    primary: palette?.['--md-sys-color-primary'] || '#456823',
+    secondary: palette?.['--md-sys-color-secondary'] || '#54634d',
+    tertiary: palette?.['--md-sys-color-tertiary'] || '#386664',
+  }
+}))
+
+function updateThemeMode(value) {
+  withThemeTransition(() => setThemeMode(value))
+}
+
+function updateMonet(enabled) {
+  withThemeTransition(() => {
+    monetEnabled.value = enabled
+  })
+}
+
+function updatePalette(value) {
+  withThemeTransition(() => {
+    themePalette.value = value
+  })
+}
+
+function updateColorSource(value) {
+  withThemeTransition(() => {
+    colorSource.value = value
+  })
+}
+
+function updateSeed(value) {
+  withThemeTransition(() => {
+    themeSeed.value = value
+    colorSource.value = 'seed'
+  })
+}
 
 onMounted(() => {
   refreshStatus(false)
@@ -95,7 +144,7 @@ watch(tab, (value) => {
             type="button"
             role="tab"
             :aria-selected="currentThemeMode === item.value"
-            @click="currentThemeMode = item.value"
+            @click="updateThemeMode(item.value)"
           >
             <component :is="item.icon" :size="16" style="vertical-align: -3px; margin-right: 4px" />
             {{ item.label }}
@@ -108,17 +157,108 @@ watch(tab, (value) => {
             <Palette :size="20" />
           </span>
           <div class="m3e-list-row__copy">
-            <p class="m3e-list-row__title">Monet 动态取色</p>
-            <p class="m3e-list-row__summary">读取 KernelSU 宿主配色并生成完整 Material 3 色板</p>
+            <p class="m3e-list-row__title">动态色彩</p>
+            <p class="m3e-list-row__summary">
+              跟随宿主配色，也可以用自选种子色生成本地 Material 3 色板
+            </p>
           </div>
-          <label class="m3e-switch" aria-label="启用 Monet 动态取色">
-            <input v-model="monetEnabled" type="checkbox">
+          <label class="m3e-switch" aria-label="启用动态色彩">
+            <input
+              type="checkbox"
+              :checked="monetEnabled"
+              @change="updateMonet($event.target.checked)"
+            >
             <span class="m3e-switch__track">
               <span class="m3e-switch__thumb" />
             </span>
           </label>
         </div>
       </div>
+
+      <Transition name="theme-studio">
+        <div v-if="monetEnabled" class="theme-studio">
+          <div class="m3e-field">
+            <span class="m3e-field__label">取色来源</span>
+            <div class="segmented-control" role="tablist" aria-label="取色来源">
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="displayedColorSource === 'host'"
+                :disabled="!hostSeedAvailable"
+                @click="updateColorSource('host')"
+              >
+                宿主配色
+              </button>
+              <button
+                type="button"
+                role="tab"
+                :aria-selected="displayedColorSource === 'seed'"
+                @click="updateColorSource('seed')"
+              >
+                自选种子
+              </button>
+            </div>
+          </div>
+
+          <div class="m3e-field">
+            <span class="m3e-field__label">色板风格</span>
+            <div class="palette-style-grid">
+              <button
+                v-for="style in paletteStylePreviews"
+                :key="style.value"
+                type="button"
+                class="palette-style"
+                :class="{ 'is-selected': themePalette === style.value }"
+                :aria-pressed="themePalette === style.value"
+                @click="updatePalette(style.value)"
+              >
+                <span
+                  class="palette-style__preview"
+                  :data-style="style.value"
+                  :style="{
+                    '--preview-primary': style.primary,
+                    '--preview-secondary': style.secondary,
+                    '--preview-tertiary': style.tertiary,
+                  }"
+                >
+                  <i />
+                  <i />
+                  <i />
+                </span>
+                <span>{{ style.label }}</span>
+                <Check v-if="themePalette === style.value" :size="15" />
+              </button>
+            </div>
+          </div>
+
+          <div class="m3e-field">
+            <span class="m3e-field__label">种子色</span>
+            <div class="seed-grid">
+              <button
+                v-for="seed in themeSeedOptions"
+                :key="seed.value"
+                type="button"
+                class="seed-swatch"
+                :class="{ 'is-selected': themeSeed === seed.value && displayedColorSource === 'seed' }"
+                :aria-label="`使用${seed.label}作为种子色`"
+                :aria-pressed="themeSeed === seed.value && displayedColorSource === 'seed'"
+                @click="updateSeed(seed.value)"
+              >
+                <span class="seed-swatch__dot" :style="{ backgroundColor: seed.value }">
+                  <Check
+                    v-if="themeSeed === seed.value && displayedColorSource === 'seed'"
+                    :size="17"
+                  />
+                </span>
+                <span>{{ seed.label }}</span>
+              </button>
+            </div>
+            <p class="theme-studio__hint">
+              {{ hostSeedAvailable ? '宿主配色可用；选择种子色会自动切换到自选模式。' : '当前宿主未提供动态色，使用自选种子色生成配色。' }}
+            </p>
+          </div>
+        </div>
+      </Transition>
     </div>
 
     <div class="section-heading">
@@ -194,5 +334,159 @@ watch(tab, (value) => {
   height: calc(100dvh - 270px);
   min-height: 420px;
   padding-top: 10px;
+}
+
+.theme-studio {
+  display: grid;
+  gap: 18px;
+  margin-top: 18px;
+  padding-top: 18px;
+  border-top: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.theme-studio__hint {
+  margin: 0;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.palette-style-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.palette-style {
+  display: grid;
+  grid-template-columns: 36px minmax(0, 1fr) 16px;
+  align-items: center;
+  gap: 9px;
+  min-height: 52px;
+  padding: 8px 10px;
+  border: 1px solid var(--md-sys-color-outline-variant);
+  border-radius: var(--m3e-radius-md);
+  background: var(--md-sys-color-surface-container-low);
+  color: var(--md-sys-color-on-surface);
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 180ms ease, background-color 180ms ease, border-radius 240ms var(--m3e-ease-expressive);
+}
+
+.palette-style.is-selected {
+  border-color: var(--md-sys-color-primary);
+  border-radius: 14px 22px 14px 22px;
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+}
+
+.palette-style__preview {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  width: 34px;
+  height: 32px;
+  padding: 5px;
+  border-radius: 11px;
+  background: var(--md-sys-color-surface-container-highest);
+}
+
+.palette-style__preview i {
+  display: block;
+  flex: 1;
+  border-radius: 999px;
+}
+
+.palette-style__preview i:nth-child(1) {
+  height: 18px;
+  background: var(--preview-primary);
+}
+
+.palette-style__preview i:nth-child(2) {
+  height: 12px;
+  background: var(--preview-secondary);
+}
+
+.palette-style__preview i:nth-child(3) {
+  height: 7px;
+  background: var(--preview-tertiary);
+}
+
+.palette-style__preview[data-style='expressive'] i:nth-child(1) {
+  height: 8px;
+}
+
+.palette-style__preview[data-style='expressive'] i:nth-child(2) {
+  height: 20px;
+}
+
+.palette-style__preview[data-style='vibrant'] {
+  transform: rotate(-4deg);
+}
+
+.palette-style__preview[data-style='neutral'] i {
+  background: var(--md-sys-color-on-surface-variant);
+}
+
+.palette-style__preview[data-style='monochrome'] i {
+  background: var(--md-sys-color-on-surface);
+}
+
+.seed-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.seed-swatch {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 7px 2px;
+  border: 0;
+  border-radius: var(--m3e-radius-md);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 11px;
+  font-weight: 620;
+  cursor: pointer;
+}
+
+.seed-swatch__dot {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--md-sys-color-surface-container-low);
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px var(--md-sys-color-outline-variant);
+  color: #fff;
+  transition: transform 220ms var(--m3e-ease-expressive), box-shadow 180ms ease;
+}
+
+.seed-swatch.is-selected .seed-swatch__dot {
+  transform: scale(1.08);
+  box-shadow: 0 0 0 2px var(--md-sys-color-primary);
+}
+
+.theme-studio-enter-active,
+.theme-studio-leave-active {
+  transition: opacity 180ms ease, transform 260ms var(--m3e-ease-spring);
+}
+
+.theme-studio-enter-from,
+.theme-studio-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
+}
+
+@media (max-width: 360px) {
+  .palette-style-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>

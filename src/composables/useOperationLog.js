@@ -47,12 +47,12 @@ export function useOperationLog() {
 
   // 执行更新命令并展示其日志：内部先归档旧日志，新 update.log 只含本次输出；
   // 执行期间轮询伪实时刷新日志内容，结束后再读一次完整日志
-  async function runWithLog(name, options = {}) {
+  async function runWithLog(name, options = {}, args = []) {
     visible.value = true
     content.value = '正在执行，等待输出…'
     pending.value = true
     try {
-      const result = await moduleApi.runBackground(name)
+      const result = await moduleApi.runBackground(name, args)
       if (!result.ok) {
         content.value = result.stderr || '指令发送失败'
         return false

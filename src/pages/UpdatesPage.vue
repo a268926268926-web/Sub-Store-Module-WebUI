@@ -13,6 +13,7 @@ import {
 import { useModuleState } from '../composables/useModuleState'
 import { useOperationLog } from '../composables/useOperationLog'
 import { showToast } from '../composables/useToast'
+import M3Select from '../components/M3Select.vue'
 import OperationLogPanel from '../components/OperationLogPanel.vue'
 import * as moduleApi from '../api/module'
 
@@ -20,18 +21,20 @@ const { refreshStatus } = useModuleState()
 const { content, visible, pending, runWithLog, followAutoUpdate } = useOperationLog()
 
 const options = [
-  { text: '全部更新', summary: 'Sub-Store 前后端 + HTTP-META', cmd: 'update-all' },
-  { text: '更新前后端', summary: 'Sub-Store 前端与后端', cmd: 'update-sub-store' },
-  { text: '仅后端', summary: '只替换 Sub-Store 后端', cmd: 'update-backend' },
-  { text: '仅前端', summary: '只替换 Sub-Store 前端', cmd: 'update-frontend' },
-  { text: 'HTTP-META 全部', summary: 'JS + 模板 + Mihomo 内核', cmd: 'update-http-meta all' },
-  { text: 'HTTP-META 脚本', summary: '只更新 JS 与模板文件', cmd: 'update-http-meta js' },
-  { text: 'Mihomo 稳定版', summary: '更新稳定版内核', cmd: 'update-http-meta kernel' },
-  { text: 'Mihomo Alpha', summary: '更新预览版内核', cmd: 'update-http-meta kernel-alpha' },
+  { label: '全部更新', description: 'Sub-Store 前后端 + HTTP-META', value: 'all', command: 'update-all', args: [] },
+  { label: '更新前后端', description: 'Sub-Store 前端与后端', value: 'sub-store', command: 'update-sub-store', args: [] },
+  { label: '仅后端', description: '只替换 Sub-Store 后端', value: 'backend', command: 'update-backend', args: [] },
+  { label: '仅前端', description: '只替换 Sub-Store 前端', value: 'frontend', command: 'update-frontend', args: [] },
+  { label: 'HTTP-META 全部', description: 'JS + 模板 + Mihomo 内核', value: 'http-meta-all', command: 'update-http-meta', args: ['all'] },
+  { label: 'HTTP-META 脚本', description: '只更新 JS 与模板文件', value: 'http-meta-js', command: 'update-http-meta', args: ['js'] },
+  { label: 'Mihomo 稳定版', description: '更新稳定版内核', value: 'http-meta-kernel', command: 'update-http-meta', args: ['kernel'] },
+  { label: 'Mihomo Alpha', description: '更新预览版内核', value: 'http-meta-alpha', command: 'update-http-meta', args: ['kernel-alpha'] },
 ]
 
-const selectedCommand = ref(options[0].cmd)
-const selectedOption = computed(() => options.find((item) => item.cmd === selectedCommand.value) || options[0])
+const selectedCommand = ref(options[0].value)
+const selectedOption = computed(() => (
+  options.find((option) => option.value === selectedCommand.value) || options[0]
+))
 
 const autoStatus = ref(null)
 const autoLoading = ref(true)
@@ -155,7 +158,8 @@ async function saveAutoPlan() {
 }
 
 async function handleManualUpdate() {
-  const ok = await runWithLog(selectedCommand.value)
+  const option = selectedOption.value
+  const ok = await runWithLog(option.command, {}, option.args)
   await Promise.all([
     refreshStatus(false),
     loadAutoStatus(),
@@ -221,17 +225,15 @@ onDeactivated(stopAutoPolling)
     </div>
   </div>
   <div class="m3e-card m3e-card__body">
-    <label class="m3e-field">
-      <span class="m3e-field__label">更新项</span>
-      <select v-model="selectedCommand" :disabled="pending">
-        <option v-for="option in options" :key="option.cmd" :value="option.cmd">
-          {{ option.text }}
-        </option>
-      </select>
-    </label>
+    <M3Select
+      v-model="selectedCommand"
+      label="更新项"
+      :options="options"
+      :disabled="pending"
+    />
     <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 16px">
       <span style="color: var(--md-sys-color-on-surface-variant); font-size: 13px">
-        {{ selectedOption.summary }}
+        选择组件范围后在后台执行
       </span>
       <button
         type="button"
