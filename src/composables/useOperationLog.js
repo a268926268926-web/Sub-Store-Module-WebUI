@@ -24,20 +24,12 @@ export function useOperationLog() {
     return false
   }
 
-  // 执行更新命令并展示其日志：内部先归档旧日志，新 update.log 只含本次输出；
-  // 执行期间轮询伪实时刷新日志内容，结束后再读一次完整日志
-  async function runWithLog(name, { timeoutMs = 600000 } = {}) {
+  async function followActiveUpdate({ timeoutMs = 600000 } = {}) {
     visible.value = true
-    content.value = '正在执行，等待输出…'
+    if (!content.value) content.value = '正在执行，等待输出…'
     pending.value = true
     try {
-      const result = await moduleApi.runBackground(name)
-      if (!result.ok) {
-        content.value = result.stderr || '指令发送失败'
-        return false
-      }
       if (!moduleApi.isBrowserDev) {
-        // 伪实时：执行期间每次轮询都刷新日志内容（空日志保持占位符，避免面板闪空）
         await pollUntilDone(timeoutMs, async () => {
           const log = await moduleApi.getUpdateLog().catch(() => '')
           if (log) content.value = log
@@ -53,5 +45,49 @@ export function useOperationLog() {
     }
   }
 
-  return { content, visible, pending, runWithLog }
+  // 执行更新命令并展示其日志：内部先归档旧日志，新 update.log 只含本次输出；
+  // 执行期间轮询伪实时刷新日志内容，结束后再读一次完整日志
+  async function runWithLog(name, options = {}) {
+    visible.value = true
+    content.value = '正在执行，等待输出…'
+    pending.value = true
+    try {
+      const result = await moduleApi.runBackground(name)
+      if (!result.ok) {
+        content.value = result.stderr || '指令发送失败'
+        return false
+      }
+      pending.value = false
+      return followActiveUpdate(options)
+    } catch (err) {
+      content.value = err?.message || '操作失败'
+      pending.value = false
+      return false
+    }
+  }
+
+  async function followAutoUpdate({ timeoutMs = 600000 } = {}) {
+    visible.value = true
+    pending.value = true
+    if (!content.value) content.value = '自动更新任务已接收，等待输出…'
+    const deadline = Date.now() + timeoutMs
+    try {
+      while (Date.now() < deadline) {
+        const [status, log] = await Promise.all([
+          moduleApi.getAutoUpdateStatus().catch(() => null),
+          moduleApi.getAutoUpdateLog().catch(() => ''),
+        ])
+        if (log) content.value = log
+        if (status && !status.running && !status.stateRunning) {
+          return status
+        }
+        await sleep(1000)
+      }
+      return null
+    } finally {
+      pending.value = false
+    }
+  }
+
+  return { content, visible, pending, runWithLog, followActiveUpdate, followAutoUpdate }
 }

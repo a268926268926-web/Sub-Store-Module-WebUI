@@ -1,20 +1,34 @@
-import { watch } from 'vue'
-import { setThemeMode, useTheme } from 'miuix-vue'
+import { computed, ref, watch } from 'vue'
 import { useStorage } from './useStorage'
 
-// 主题模式持久化（模块级单例）：
-// - 模块加载时恢复上次选择（早于首屏，避免主题闪烁）
-// - 任何 setThemeMode 变更自动写回 localStorage
-// miuix 的 useTheme 只在内存持有 mode，刷新即回 system，这里补一层持久化。
+const VALID_MODES = new Set(['system', 'light', 'dark'])
 const storedMode = useStorage('themeMode', 'system')
+storedMode.value = VALID_MODES.has(storedMode.value) ? storedMode.value : 'system'
 
-setThemeMode(storedMode.value)
-
-const { mode } = useTheme()
-watch(mode, (m) => {
-  if (m !== storedMode.value) storedMode.value = m
+const mediaQuery = window.matchMedia?.('(prefers-color-scheme: dark)')
+const systemDark = ref(mediaQuery?.matches ?? false)
+const resolvedMode = computed(() => {
+  if (storedMode.value === 'system') return systemDark.value ? 'dark' : 'light'
+  return storedMode.value
 })
 
+function applyTheme() {
+  const root = document.documentElement
+  root.dataset.theme = resolvedMode.value
+  root.classList.toggle('theme-dark', resolvedMode.value === 'dark')
+  root.style.colorScheme = resolvedMode.value
+}
+
+watch(resolvedMode, applyTheme, { immediate: true })
+
+mediaQuery?.addEventListener?.('change', (event) => {
+  systemDark.value = event.matches
+})
+
+function setThemeMode(nextMode) {
+  storedMode.value = VALID_MODES.has(nextMode) ? nextMode : 'system'
+}
+
 export function useStoredTheme() {
-  return { mode: storedMode, setThemeMode }
+  return { mode: storedMode, resolvedMode, setThemeMode }
 }

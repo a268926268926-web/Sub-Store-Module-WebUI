@@ -21,6 +21,20 @@ const MOCK_STATUS = {
   runUserIsRoot: true,
 }
 
+const mockAutoUpdateState = {
+  enabled: false,
+  schedule: 'daily',
+  hour: 4,
+  minute: 30,
+  intervalDays: 1,
+  running: false,
+  daemonRunning: false,
+  lastRun: '',
+  lastStatus: 'never',
+  lastResult: '尚未执行',
+  nextRun: '',
+}
+
 // 模拟 sub_store.env 内容，供浏览器 dev 调试编辑器
 const MOCK_ENV = `##!/system/bin/sh
 # ============================================================
@@ -122,13 +136,55 @@ const MOCK_OUTPUT = {
 export function mockExec(command, options = {}) {
   return new Promise((resolve) => {
     setTimeout(() => {
-      if (command.includes('status')) {
+      if (/\sstatus$/.test(command)) {
         resolve({ errno: 0, stdout: JSON.stringify(MOCK_STATUS), stderr: '' })
         return
       }
       if (command.includes('log-size')) {
         // dev 环境跳过完成轮询，返回固定字节数即可
         resolve({ errno: 0, stdout: '400', stderr: '' })
+        return
+      }
+      if (command.includes('auto-update-log')) {
+        resolve({
+          errno: 0,
+          stdout: '[Info] 自动更新任务启动\n[Info] 后端已是最新版本\n[Info] 前端已是最新版本\n[Info] http-meta 处理完成',
+          stderr: '',
+        })
+        return
+      }
+      if (command.includes('auto-update-status') || command.includes('auto-update-config') || command.includes('auto-update-run-now')) {
+        if (command.includes('auto-update-run-now')) {
+          mockAutoUpdateState.running = true
+          mockAutoUpdateState.lastStatus = 'running'
+          setTimeout(() => {
+            mockAutoUpdateState.running = false
+            mockAutoUpdateState.lastStatus = 'success'
+            mockAutoUpdateState.lastResult = '已是最新版本'
+            mockAutoUpdateState.lastRun = Date.now()
+          }, 1200)
+          resolve({ errno: 0, stdout: JSON.stringify({ accepted: true }), stderr: '' })
+          return
+        }
+        if (command.includes('auto-update-config')) {
+          const encoded = command.match(/'([^']+)'/)?.[1]
+          if (encoded) {
+            try {
+              Object.assign(mockAutoUpdateState, JSON.parse(atob(encoded)))
+              const intervalDays = mockAutoUpdateState.schedule === 'interval_days'
+                ? Number(mockAutoUpdateState.intervalDays) || 7
+                : 1
+              mockAutoUpdateState.nextRun = mockAutoUpdateState.enabled
+                ? Date.now() + intervalDays * 86400000
+                : ''
+              mockAutoUpdateState.daemonRunning = mockAutoUpdateState.enabled
+            } catch {
+              resolve({ errno: 1, stdout: '', stderr: 'invalid config' })
+              return
+            }
+          }
+        }
+        resolve({ errno: 0, stdout: JSON.stringify(mockAutoUpdateState), stderr: '' })
         return
       }
       const key = Object.keys(MOCK_OUTPUT).find((k) => command.includes(k))

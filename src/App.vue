@@ -1,206 +1,206 @@
 <script setup>
-// Sub-Store 模块 WebUI 应用骨架：
-// 固定顶栏 + NavigationBar + ScrollArea + SnackbarHost + 主题切换。
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
 import {
-  MiuixIcon,
-  MiuixNavigationBar,
-  MiuixScrollArea,
-  MiuixSnackbarHost,
-  MiuixTopAppBar,
-} from 'miuix-vue'
-import { GridView, Update, Settings, Info } from 'miuix-vue/icons'
-import { MODULE_VERSION, requestFullScreen } from './api/module'
-import { useStoredTheme } from './composables/useStoredTheme'
+  Info,
+  LayoutDashboard,
+  Monitor,
+  Moon,
+  PackageOpen,
+  RefreshCw,
+  Settings2,
+  Sun,
+  X,
+} from '@lucide/vue'
+import { isBrowserDev, MODULE_VERSION, requestFullScreen } from './api/module'
 import { useMonetTheme } from './composables/useMonetTheme'
+import { useStoredTheme } from './composables/useStoredTheme'
+import { useToast } from './composables/useToast'
 
-// 顶栏副标题：模块版本号（module.prop 的 version）
 const subtitle = MODULE_VERSION ? `v${MODULE_VERSION}` : ''
-
-// 主题持久化：恢复上次选择并持续写回（useStoredTheme 是模块级单例，此处调用保证初始化）
-useStoredTheme()
 useMonetTheme()
 
-// 页面仅在对应 tab 首次打开时下载，避免配置编辑器的 CodeMirror 进入首屏包。
 const pages = [
   defineAsyncComponent(() => import('./pages/OverviewPage.vue')),
   defineAsyncComponent(() => import('./pages/UpdatesPage.vue')),
   defineAsyncComponent(() => import('./pages/SettingsPage.vue')),
   defineAsyncComponent(() => import('./pages/AboutPage.vue')),
 ]
-const titles = ['概览', '更新', '配置', '关于']
-const navItems = titles.map((label) => ({ label }))
-// 各 tab 图标：与 miuix example 的 AppContent.kt navigationItems 对应。
-const navIcons = [GridView, Update, Settings, Info]
+
+const navItems = [
+  {
+    title: '概览',
+    eyebrow: 'SUB-STORE ANDROID',
+    description: '服务状态、访问入口与运行控制集中在这里。',
+    icon: LayoutDashboard,
+  },
+  {
+    title: '更新',
+    eyebrow: 'COMPONENTS & SCHEDULE',
+    description: '管理手动组件更新，以及关闭页面后仍会执行的后台计划。',
+    icon: PackageOpen,
+  },
+  {
+    title: '配置',
+    eyebrow: 'SERVICE & ENVIRONMENT',
+    description: '调整 M3E 外观、开机行为、访问路径和 Sub-Store 运行环境。',
+    icon: Settings2,
+  },
+  {
+    title: '关于',
+    eyebrow: 'PROJECT INFORMATION',
+    description: '上游项目、维护者、许可与模块来源。',
+    icon: Info,
+  },
+]
 
 const navIndex = ref(0)
 const activePage = computed(() => pages[navIndex.value])
-const activeTitle = computed(() => titles[navIndex.value])
+const activeNav = computed(() => navItems[navIndex.value])
 
-// 每个 tab 保留滚动位置：切换前保存出去的 tab 的 scrollTop，进入时恢复。
+const { mode, setThemeMode } = useStoredTheme()
+const themeIcon = computed(() => {
+  if (mode.value === 'light') return Sun
+  if (mode.value === 'dark') return Moon
+  return Monitor
+})
+const themeTitle = computed(() => {
+  if (mode.value === 'light') return '当前浅色主题，切换到深色'
+  if (mode.value === 'dark') return '当前深色主题，切换到跟随系统'
+  return '当前跟随系统，切换到浅色'
+})
+
+function cycleTheme() {
+  const next = { system: 'light', light: 'dark', dark: 'system' }
+  setThemeMode(next[mode.value] || 'system')
+}
+
 const scrollerRef = ref(null)
 const scrollPositions = new Map()
 
 watch(
   navIndex,
-  (_next, prev) => {
-    scrollPositions.set(prev, scrollerRef.value?.getScrollTop?.() ?? 0)
+  (_next, previous) => {
+    if (scrollerRef.value) {
+      scrollPositions.set(previous, scrollerRef.value.scrollTop)
+    }
+    nextTick(() => {
+      if (scrollerRef.value) {
+        scrollerRef.value.scrollTop = scrollPositions.get(navIndex.value) ?? 0
+      }
+    })
   },
-  { flush: 'pre' },
 )
 
-function onPageEnter() {
-  scrollerRef.value?.setScrollTop?.(scrollPositions.get(navIndex.value) ?? 0)
-}
-
-// SnackbarHost 会浮到 body 顶层并悬在底部导航上方（对应 miuix Scaffold）。
-// 把导航栏实测高度同步为 --m-snackbar-inset-bottom，让 host 让开导航栏。
-const bottomBarRef = ref(null)
-let barObserver = null
-
-function syncSnackbarInset() {
-  const h = bottomBarRef.value?.offsetHeight ?? 0
-  document.documentElement.style.setProperty('--m-snackbar-inset-bottom', `${h}px`)
-}
+const { toasts, dismissToast } = useToast()
 
 onMounted(() => {
-  // KSU/APatch 全屏：进 WebUI 即请求全屏并接收系统栏 inset（浏览器 dev 下为空操作）
   requestFullScreen()
-
-  if (bottomBarRef.value) {
-    barObserver = new ResizeObserver(syncSnackbarInset)
-    barObserver.observe(bottomBarRef.value)
+  if (!isBrowserDev) {
+    const insets = document.createElement('link')
+    insets.rel = 'stylesheet'
+    insets.href = 'https://mui.kernelsu.org/internal/insets.css'
+    document.head.append(insets)
   }
-  syncSnackbarInset()
 })
 
-onBeforeUnmount(() => {
-  barObserver?.disconnect()
-  document.documentElement.style.removeProperty('--m-snackbar-inset-bottom')
-})
 </script>
 
 <template>
-  <div class="app">
-    <!-- 固定顶栏：不随内容滚动，主标题固定应用名，当前 tab 名放副标题。
-         主题切换在配置页，顶栏不保留切换按钮。 -->
-    <MiuixTopAppBar class="app__topbar" title="Sub-Store for Android" :subtitle="subtitle" />
+  <div class="app-shell">
+    <header class="top-app-bar">
+      <div class="brand-mark" aria-hidden="true">
+        <RefreshCw :size="21" :stroke-width="2.2" />
+      </div>
+      <div class="top-app-bar__copy">
+        <p class="top-app-bar__title">Sub-Store Android</p>
+        <p class="top-app-bar__subtitle">{{ subtitle || 'KernelSU WebUI' }}</p>
+      </div>
+      <div class="top-app-bar__actions">
+        <button
+          type="button"
+          class="icon-button"
+          :title="themeTitle"
+          :aria-label="themeTitle"
+          @click="cycleTheme"
+        >
+          <component :is="themeIcon" :size="22" :stroke-width="2" />
+        </button>
+      </div>
+    </header>
 
-    <!-- 内容区：4 个 tab 页面（概览/更新/配置/关于），内部滚动。 -->
-    <MiuixScrollArea ref="scrollerRef" class="app__body">
-      <Transition name="page" mode="out-in" @enter="onPageEnter">
-        <KeepAlive>
-          <component :is="activePage" :key="navIndex" />
-        </KeepAlive>
-      </Transition>
-    </MiuixScrollArea>
+    <main class="app-viewport">
+      <div ref="scrollerRef" class="app-scroll">
+        <div class="page-content" :data-module-version="subtitle">
+          <header class="page-hero">
+            <p class="page-hero__eyebrow">{{ activeNav.eyebrow }}</p>
+            <h1 class="page-hero__title">{{ activeNav.title }}</h1>
+            <p class="page-hero__description">{{ activeNav.description }}</p>
+          </header>
+          <Transition name="page" mode="out-in">
+            <KeepAlive>
+              <component :is="activePage" :key="navIndex" />
+            </KeepAlive>
+          </Transition>
+        </div>
+      </div>
+    </main>
 
-    <div ref="bottomBarRef" class="app__bottom">
-      <MiuixNavigationBar v-model="navIndex" :items="navItems">
-        <template #icon="{ index }">
-          <MiuixIcon :icon="navIcons[index]" :size="26" />
-        </template>
-      </MiuixNavigationBar>
+    <nav class="nav-rail" aria-label="主导航">
+      <button
+        v-for="(item, index) in navItems"
+        :key="item.title"
+        type="button"
+        class="nav-rail__item"
+        :class="{ 'is-active': navIndex === index }"
+        :aria-current="navIndex === index ? 'page' : undefined"
+        @click="navIndex = index"
+      >
+        <span class="nav-rail__icon">
+          <component :is="item.icon" :size="22" :stroke-width="2.1" />
+        </span>
+        <span>{{ item.title }}</span>
+      </button>
+    </nav>
+
+    <div class="bottom-dock-wrap">
+      <nav class="bottom-dock" aria-label="主导航">
+        <button
+          v-for="(item, index) in navItems"
+          :key="item.title"
+          type="button"
+          class="bottom-dock__item"
+          :class="{ 'is-active': navIndex === index }"
+          :aria-current="navIndex === index ? 'page' : undefined"
+          @click="navIndex = index"
+        >
+          <span class="bottom-dock__icon">
+            <component :is="item.icon" :size="21" :stroke-width="2.1" />
+          </span>
+          <span>{{ item.title }}</span>
+        </button>
+      </nav>
+    </div>
+
+    <div class="toast-host" aria-live="polite" aria-atomic="true">
+      <TransitionGroup name="toast">
+        <div
+          v-for="toast in toasts"
+          :key="toast.id"
+          class="toast"
+          :class="{ 'toast--error': toast.tone === 'error' }"
+        >
+          <span style="flex: 1">{{ toast.message }}</span>
+          <button
+            type="button"
+            class="icon-button"
+            style="width: 32px; height: 32px"
+            aria-label="关闭通知"
+            @click="dismissToast(toast.id)"
+          >
+            <X :size="17" />
+          </button>
+        </div>
+      </TransitionGroup>
     </div>
   </div>
-
-  <MiuixSnackbarHost />
 </template>
-
-<style lang="scss">
-// KSU/APatch 全屏：加载官方 insets.css，提供 --window-inset-* 等安全区变量
-// （KSU 管理器会自动替换为实际系统栏像素，浏览器 dev 下回退 0）。
-@import url("https://mui.kernelsu.org/internal/insets.css");
-
-// 全局基础样式（原 src/styles/theme.css 收进这里），字体栈沿用 example 的 MiSans 那套。
-// 语义色调：库 token 只覆盖 主色(蓝)/错误(红)，绿/橙没有现成语义 token，
-// 用 miuix 色板近似值（example 下拉示例的 #36D167 绿 / #FFB21D 黄）定义成
-// 全局变量，状态卡片与操作日志共用，便于日后统一换 token。
-:root {
-  color-scheme: light dark;
-  --tone-success: #36d167;
-  --tone-warning: #ffb21d;
-
-  // 布局安全区：顶栏垫状态栏、底栏垫手势条（值来自上方 insets.css）
-  --top-inset: var(--window-inset-top, 0px);
-  --bottom-inset: var(--window-inset-bottom, 0px);
-}
-
-html,
-body {
-  margin: 0;
-  height: 100%;
-}
-
-* {
-  box-sizing: border-box;
-}
-
-body {
-  font-family:
-    'MiSans-VF',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    Roboto,
-    Oxygen,
-    Ubuntu,
-    Cantarell,
-    sans-serif;
-  background: var(--m-color-background);
-  color: var(--m-color-on-background);
-}
-
-.app {
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-  min-height: 0;
-  background: var(--m-color-surface);
-
-  // KSU/APatch 全屏：顶部分别垫状态栏高度，表面背景仍延伸盖住系统栏区域。
-  padding-top: var(--top-inset, 0px);
-
-  // 顶栏留白：不贴屏幕边缘，行高 52px 基础上再给四周呼吸空间。
-  &__topbar {
-    padding: 8px 20px;
-  }
-
-  &__bottom {
-    flex: none;
-    z-index: 10;
-    // 底部垫手势条高度，导航栏内容避开系统手势区。
-    padding-bottom: var(--bottom-inset, 0px);
-  }
-
-  // flex:1 + min-height:0 让 body 恰好占满上下栏之间的空间，
-  // MiuixScrollArea 内部滚动（viewport 裁掉横向溢出）。
-  &__body {
-    flex: 1;
-    min-height: 0;
-  }
-
-  // 内容 wrapper 撑满视口高度，供子页面（如设置页编辑器 Tab）用 height:100% 占满剩余空间。
-  // 内容超出视口的页面（概览/更新等）仍由 viewport 滚动：scrollable overflow 含溢出于孙，
-  // 不受 height:100% 影响。
-  &__body .m-scroll-area__content {
-    height: 100%;
-  }
-
-  // 固定顶栏 + 滚动体 + 底栏都坐在 surface 背景上（卡片之下）。
-  &__body,
-  .m-top-app-bar,
-  .m-navigation-bar {
-    background: var(--m-color-surface);
-  }
-}
-
-.page-enter-active,
-.page-leave-active {
-  transition: opacity 0.18s ease;
-}
-.page-enter-from,
-.page-leave-to {
-  opacity: 0;
-}
-</style>

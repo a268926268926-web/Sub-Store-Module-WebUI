@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
 import { nextTick } from 'vue'
-
-let caseId = 0
+import { test, vi } from 'vitest'
 
 async function setup(saved, seed = '#6750a4') {
   const classes = new Set()
@@ -18,7 +16,8 @@ async function setup(saved, seed = '#6750a4') {
     head: { append: (element) => elements.push(element) },
   }
   globalThis.getComputedStyle = () => ({ getPropertyValue: () => seed })
-  const { useMonetTheme } = await import(`../src/composables/useMonetTheme.js?case=${++caseId}`)
+  vi.resetModules()
+  const { useMonetTheme } = await import('../src/composables/useMonetTheme.js')
   return { ...useMonetTheme(), classes, elements, storage }
 }
 
@@ -54,8 +53,8 @@ test('restore saved preference, persist changes, and remove the override when di
   state.elements[0].onload()
   await waitFor(() => state.classes.has('m-theme-monet'))
   const css = state.elements.find((e) => e.tag === 'style').textContent
-  assert.match(css, /:root\.m-theme-monet\{/)
-  assert.match(css, /:root\.m-theme-monet\.m-theme-dark\{/)
+  assert.match(css, /:root\.m-theme-monet\[data-theme="light"\]\{/)
+  assert.match(css, /:root\.m-theme-monet\[data-theme="dark"\]\{/)
 
   state.monetEnabled.value = false
   await nextTick()

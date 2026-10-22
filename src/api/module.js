@@ -86,6 +86,44 @@ export async function getUpdateStatus() {
   return (result.stdout || 'running').trim()
 }
 
+function parseJsonOutput(result, fallbackMessage) {
+  let parsed
+  try {
+    parsed = JSON.parse(result.stdout)
+  } catch {
+    if (!result.ok) throw new Error(result.stderr || result.stdout || fallbackMessage)
+    throw new Error(`无法解析自动更新状态: ${result.stdout || result.stderr || '空输出'}`)
+  }
+  if (!result.ok || parsed?.success === false) {
+    throw new Error(parsed?.error || parsed?.message || result.stderr || fallbackMessage)
+  }
+  return parsed
+}
+
+export async function getAutoUpdateStatus() {
+  const result = await runModuleCommand(`sh ${WEBUI_SCRIPT} auto-update-status`)
+  return parseJsonOutput(result, '读取自动更新状态失败')
+}
+
+export async function saveAutoUpdateConfig(config) {
+  const raw = JSON.stringify(config)
+  const bytes = new TextEncoder().encode(raw)
+  let bin = ''
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
+  const result = await runModuleCommand(`sh ${WEBUI_SCRIPT} auto-update-config '${btoa(bin)}'`)
+  return parseJsonOutput(result, '保存自动更新配置失败')
+}
+
+export async function runAutoUpdateNow() {
+  const result = await runModuleCommand(`sh ${WEBUI_SCRIPT} auto-update-run-now`)
+  return parseJsonOutput(result, '启动自动更新失败')
+}
+
+export async function getAutoUpdateLog() {
+  const result = await runModuleCommand(`sh ${WEBUI_SCRIPT} auto-update-log`)
+  return result.ok ? result.stdout : result.stderr || result.stdout
+}
+
 // 后台执行：先同步轮转旧日志（新 run.log 只含本次输出），再 nohup 后台运行。
 // 服务控制（start/stop/restart）与更新（update-*）都走这里，页面传完整子命令。
 // update-* 在 webui.sh 内不轮转，必须在此先行 log-reset，否则会追加到上次的旧日志。
