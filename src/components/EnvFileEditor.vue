@@ -9,7 +9,6 @@ import { CircleAlert, FileCode2, RefreshCw, Save } from '@lucide/vue'
 import { readEnvFile, writeEnvFile } from '../api/module'
 import { useStoredTheme } from '../composables/useStoredTheme'
 import { showToast } from '../composables/useToast'
-import '@fontsource-variable/jetbrains-mono/wght.css'
 
 const props = defineProps({
   title: { type: String, default: '' },
@@ -147,7 +146,7 @@ async function save() {
   height: 100%;
   min-height: 320px;
   overflow: auto;
-  font-family: 'JetBrains Mono Variable', monospace;
+  font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code', 'Roboto Mono', 'Noto Sans Mono', monospace;
 }
 
 .env-editor__actions {

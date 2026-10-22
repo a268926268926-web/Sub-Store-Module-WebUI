@@ -1,10 +1,4 @@
-# pnpm 11 默认 minimum-release-age=1440（24h），会拒绝「发布未满 24h」的依赖。
-# 当前 vite@8.2.1 恰好命中该窗口，导致 install/build 的锁文件供应链校验失败；
-# 这里把它加入豁免清单。等该版本超过 24h 后删除本文件即可恢复默认保护。
-minimumReleaseAgeExclude:
-  - vite@8.2.1
-
-# sass-embedded 依赖的 sass 可选依赖 @parcel/watcher（原生文件监听器），
-# 有 chokidar 兜底，无需构建其原生二进制。
-allowBuilds:
-  '@parcel/watcher': false
+# Keep one CodeMirror view build in this dependency graph. With 6.43.15 the
+# lazy environment-editor chunk grew from 132 KB to 179 KB gzip in our build.
+overrides:
+  '@codemirror/view': 6.43.14

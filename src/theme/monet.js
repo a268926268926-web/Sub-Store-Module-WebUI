@@ -1,24 +1,5 @@
 import { Hct, TonalPalette, argbFromHex, hexFromArgb } from '@material/material-color-utilities'
 
-export const PALETTE_STYLE_OPTIONS = [
-  { value: 'tonal', label: '协调' },
-  { value: 'expressive', label: '表现' },
-  { value: 'vibrant', label: '鲜艳' },
-  { value: 'neutral', label: '低饱和' },
-  { value: 'monochrome', label: '单色' },
-]
-
-export const THEME_SEED_OPTIONS = [
-  { label: '暮紫', value: '#6750a4' },
-  { label: '湖蓝', value: '#00639b' },
-  { label: '海松', value: '#006a67' },
-  { label: '松林', value: '#4a672d' },
-  { label: '靛青', value: '#5355a9' },
-  { label: '珊瑚', value: '#b94073' },
-  { label: '琥珀', value: '#8c5300' },
-  { label: '岩灰', value: '#5f6162' },
-]
-
 const STYLE_CONFIG = {
   tonal: {
     primaryHue: 0,

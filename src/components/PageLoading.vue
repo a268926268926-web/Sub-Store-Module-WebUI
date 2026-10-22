@@ -26,18 +26,27 @@ import M3LoadingIndicator from './M3LoadingIndicator.vue'
 }
 
 .page-loading__rows span {
+  position: relative;
   display: block;
   height: 76px;
+  overflow: hidden;
   border-radius: 20px;
+  background: var(--md-sys-color-surface-container-high);
+}
+
+.page-loading__rows span::after {
+  position: absolute;
+  inset: 0;
   background:
     linear-gradient(
       100deg,
-      var(--md-sys-color-surface-container-high) 20%,
+      transparent 20%,
       var(--md-sys-color-surface-container-highest) 38%,
-      var(--md-sys-color-surface-container-high) 56%
+      transparent 56%
     );
   background-size: 240% 100%;
-  animation: page-loading-shimmer 1.7s ease-in-out infinite;
+  content: '';
+  animation: page-loading-shimmer 1.4s ease-in-out infinite;
 }
 
 .page-loading__rows span:nth-child(2) {
@@ -50,11 +59,11 @@ import M3LoadingIndicator from './M3LoadingIndicator.vue'
 
 @keyframes page-loading-shimmer {
   from {
-    background-position: 100% 0;
+    transform: translateX(-100%);
   }
 
   to {
-    background-position: -100% 0;
+    transform: translateX(100%);
   }
 }
 </style>

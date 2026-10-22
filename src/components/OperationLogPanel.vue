@@ -1,7 +1,6 @@
 <script setup>
 import { ref, watch } from 'vue'
 import { TerminalSquare } from '@lucide/vue'
-import '@fontsource-variable/jetbrains-mono/wght.css'
 import M3LoadingIndicator from './M3LoadingIndicator.vue'
 
 const props = defineProps({

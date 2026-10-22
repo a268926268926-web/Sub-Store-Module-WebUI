@@ -11,7 +11,10 @@ const lastOutput = ref('')
 const refreshedAt = ref('')
 
 async function refreshStatus(notify = false) {
-  loading.value = true
+  // Background refreshes must not flash the global progress indicator. The
+  // loading state is only useful when there is no status to render yet.
+  const showLoading = status.value == null
+  if (showLoading) loading.value = true
   error.value = ''
   try {
     status.value = await moduleApi.getStatus()
@@ -22,7 +25,7 @@ async function refreshStatus(notify = false) {
     error.value = err?.message || '状态读取失败'
     if (notify) showToast(error.value, { tone: 'error' })
   } finally {
-    loading.value = false
+    if (showLoading) loading.value = false
   }
 }
 

@@ -1,3 +1,4 @@
+/* Baseline Material tokens; the optional dynamic palette is injected lazily. */
 :root {
   color-scheme: light;
   --md-sys-color-primary: #5a5891;
@@ -97,6 +98,30 @@
   --m3e-log-line: #30303a;
 }
 
+:root.m-theme-monet[data-theme='dark'].theme-black {
+  --md-sys-color-background: #000000;
+  --md-sys-color-surface: #000000;
+  --md-sys-color-surface-container-lowest: #000000;
+  --md-sys-color-surface-container-low: #080808;
+  --md-sys-color-surface-container: #101010;
+  --md-sys-color-surface-container-high: #171717;
+  --md-sys-color-surface-container-highest: #222222;
+  --m3e-log-surface: #000000;
+  --m3e-log-line: #262626;
+}
+
+:root[data-theme='dark'].theme-black {
+  --md-sys-color-background: #000000;
+  --md-sys-color-surface: #000000;
+  --md-sys-color-surface-container-lowest: #000000;
+  --md-sys-color-surface-container-low: #080808;
+  --md-sys-color-surface-container: #101010;
+  --md-sys-color-surface-container-high: #171717;
+  --md-sys-color-surface-container-highest: #222222;
+  --m3e-log-surface: #000000;
+  --m3e-log-line: #262626;
+}
+
 html,
 body,
 #app {
@@ -113,17 +138,10 @@ body {
   overflow: hidden;
   background: var(--md-sys-color-surface);
   color: var(--md-sys-color-on-surface);
-  font-family:
-    'MiSans-VF',
-    -apple-system,
-    BlinkMacSystemFont,
-    'Segoe UI',
-    'Noto Sans CJK SC',
-    sans-serif;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans CJK SC', sans-serif;
   font-size: 16px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
 }
 
 button,
@@ -136,6 +154,7 @@ textarea {
 
 button {
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 button:focus-visible,
@@ -169,13 +188,12 @@ textarea:focus-visible {
   min-height: 68px;
   padding: 9px max(18px, calc((100% - var(--m3e-content-width)) / 2 + 18px));
   background: transparent;
-  transition: background-color 240ms var(--m3e-ease-spring), box-shadow 240ms ease;
+  transition: background-color 140ms ease;
 }
 
 .top-app-bar.is-scrolled {
-  background: color-mix(in srgb, var(--md-sys-color-surface) 86%, transparent);
+  background: var(--md-sys-color-surface);
   box-shadow: 0 1px 0 color-mix(in srgb, var(--md-sys-color-outline-variant) 28%, transparent);
-  backdrop-filter: blur(24px) saturate(1.25);
 }
 
 .top-app-bar__page-title {
@@ -361,7 +379,7 @@ textarea:focus-visible {
   isolation: isolate;
   overflow: hidden;
   box-shadow: 0 1px 2px color-mix(in srgb, var(--md-sys-color-shadow) 10%, transparent);
-  transition: border-radius 260ms var(--m3e-ease-expressive), transform 180ms var(--m3e-ease-expressive), filter 160ms ease, box-shadow 160ms ease;
+  transition: transform 150ms var(--m3e-ease-expressive);
 }
 
 .m3e-button::after {
@@ -382,18 +400,12 @@ textarea:focus-visible {
   opacity: 0.14;
 }
 
-.m3e-button:hover {
-  filter: brightness(1.04);
-}
-
 .m3e-button:active {
-  border-radius: 14px;
   transform: scale(0.97);
 }
 
 .m3e-button:disabled {
   cursor: not-allowed;
-  filter: none;
   opacity: 0.42;
 }
 
@@ -494,7 +506,7 @@ textarea:focus-visible {
   background: var(--md-sys-color-surface-container-lowest);
   color: inherit;
   text-align: left;
-  transition: background-color 180ms ease, border-radius 220ms var(--m3e-ease-spring);
+  transition: background-color 140ms ease;
 }
 
 .m3e-list-row:first-child {
@@ -524,7 +536,10 @@ button.m3e-list-row.is-loading:disabled {
 
 button.m3e-list-row:hover {
   background: var(--md-sys-color-surface-container-high);
-  border-radius: var(--m3e-radius-md);
+}
+
+button.m3e-list-row:active {
+  background: var(--md-sys-color-surface-container-highest);
 }
 
 .m3e-list-row__icon {
@@ -596,13 +611,14 @@ button.m3e-list-row:hover {
 
 .m3e-switch__thumb {
   position: absolute;
-  top: 6px;
-  left: 7px;
-  width: 16px;
-  height: 16px;
+  top: 4px;
+  left: 4px;
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   background: var(--md-sys-color-outline);
-  transition: width 260ms var(--m3e-ease-expressive), height 260ms var(--m3e-ease-expressive), transform 260ms var(--m3e-ease-expressive), background-color 180ms ease;
+  transform: scale(0.67);
+  transition: transform 180ms var(--m3e-ease-expressive), background-color 140ms ease;
 }
 
 .m3e-switch input:checked + .m3e-switch__track {
@@ -611,10 +627,8 @@ button.m3e-list-row:hover {
 }
 
 .m3e-switch input:checked + .m3e-switch__track .m3e-switch__thumb {
-  width: 24px;
-  height: 24px;
   background: var(--md-sys-color-on-primary);
-  transform: translate(18px, -4px);
+  transform: translateX(18px) scale(1);
 }
 
 .m3e-switch:has(input:disabled) {
@@ -689,7 +703,7 @@ button.m3e-list-row:hover {
 
 .address-value {
   overflow-wrap: anywhere;
-  font-family: 'JetBrains Mono Variable', monospace;
+  font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code', 'Roboto Mono', 'Noto Sans Mono', monospace;
   font-size: 13px;
 }
 
@@ -771,22 +785,22 @@ button.m3e-list-row:hover {
   border-radius: var(--m3e-radius-md);
   background: var(--m3e-log-surface);
   color: var(--m3e-log-text);
-  font-family: 'JetBrains Mono Variable', monospace;
+  font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code', 'Roboto Mono', 'Noto Sans Mono', monospace;
   font-size: 12px;
   line-height: 1.65;
   word-break: break-all;
 }
 
 .log-line--info {
-  color: color-mix(in srgb, var(--md-sys-color-primary) 58%, white);
+  color: color-mix(in srgb, var(--md-sys-color-primary) 52%, #817b89);
 }
 
 .log-line--warn {
-  color: color-mix(in srgb, var(--md-sys-color-tertiary) 52%, white);
+  color: color-mix(in srgb, var(--md-sys-color-tertiary) 48%, #827a70);
 }
 
 .log-line--error {
-  color: color-mix(in srgb, var(--md-sys-color-error) 48%, white);
+  color: color-mix(in srgb, var(--md-sys-color-error) 58%, #857b7b);
 }
 
 .m3e-error {
@@ -828,9 +842,8 @@ button.m3e-list-row:hover {
   padding: 7px 10px;
   border: 0;
   border-radius: 0;
-  background: color-mix(in srgb, var(--md-sys-color-surface) 92%, transparent);
+  background: var(--md-sys-color-surface-container-low);
   box-shadow: 0 -1px 0 color-mix(in srgb, var(--md-sys-color-outline-variant) 28%, transparent);
-  backdrop-filter: blur(22px) saturate(1.2);
   pointer-events: auto;
 }
 
@@ -869,7 +882,7 @@ button.m3e-list-row:hover {
   width: 58px;
   height: 32px;
   border-radius: var(--m3e-radius-full);
-  transition: background-color 200ms ease, width 260ms var(--m3e-ease-expressive);
+  transition: background-color 140ms ease;
 }
 
 .bottom-dock__item.is-active .bottom-dock__icon {
@@ -952,28 +965,35 @@ button.m3e-list-row:hover {
 
 .page-enter-active,
 .page-leave-active {
-  transition: opacity 180ms ease, transform 260ms var(--m3e-ease-spring);
+  transition: opacity 90ms linear, transform 120ms var(--m3e-ease-spring);
 }
 
 .page-enter-from {
   opacity: 0;
-  transform: translateY(10px) scale(0.99);
+  transform: translateY(5px);
 }
 
 ::view-transition-old(root),
 ::view-transition-new(root) {
-  animation-duration: 220ms;
+  animation-duration: 160ms;
   animation-timing-function: cubic-bezier(0.2, 0, 0, 1);
+}
+
+.theme-changing .page-enter-active,
+.theme-changing .page-leave-active,
+.theme-changing .settings-view-enter-active,
+.theme-changing .settings-view-leave-active {
+  transition-duration: 0ms;
 }
 
 .page-leave-to {
   opacity: 0;
-  transform: translateY(-4px) scale(0.995);
+  transform: translateY(-2px);
 }
 
 .toast-enter-active,
 .toast-leave-active {
-  transition: opacity 180ms ease, transform 260ms var(--m3e-ease-expressive);
+  transition: opacity 120ms ease, transform 160ms var(--m3e-ease-expressive);
 }
 
 .toast-enter-from,
@@ -984,12 +1004,12 @@ button.m3e-list-row:hover {
 
 .modal-enter-active,
 .modal-leave-active {
-  transition: opacity 180ms ease;
+  transition: opacity 130ms ease;
 }
 
 .modal-enter-active .modal-sheet,
 .modal-leave-active .modal-sheet {
-  transition: transform 260ms var(--m3e-ease-expressive), opacity 180ms ease;
+  transition: transform 180ms var(--m3e-ease-expressive), opacity 130ms ease;
 }
 
 .modal-enter-from,

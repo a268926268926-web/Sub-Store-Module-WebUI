@@ -1,18 +1,26 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { Check, ChevronDown, X } from '@lucide/vue'
+import {
+  cancelHistoryLayer,
+  closeHistoryLayer,
+  pushHistoryLayer,
+} from '../composables/useHistoryLayer'
 
 const props = defineProps({
   modelValue: { type: String, required: true },
   options: { type: Array, required: true },
   label: { type: String, default: '' },
   disabled: { type: Boolean, default: false },
+  variant: { type: String, default: 'field' },
+  ariaLabel: { type: String, default: '' },
 })
 
 const emit = defineEmits(['update:modelValue'])
 const open = ref(false)
 const triggerRef = ref(null)
 const sheetRef = ref(null)
+let layerToken = null
 
 const selected = computed(() => (
   props.options.find((option) => option.value === props.modelValue) || props.options[0]
@@ -24,13 +32,23 @@ function choose(value) {
 }
 
 async function openSheet() {
-  if (props.disabled) return
+  if (props.disabled || open.value) return
   open.value = true
+  layerToken = pushHistoryLayer(() => {
+    open.value = false
+    layerToken = null
+    nextTick(() => triggerRef.value?.focus())
+  })
   await nextTick()
   sheetRef.value?.querySelector('button[aria-selected="true"]')?.focus()
 }
 
 function close() {
+  if (!open.value) return
+  if (layerToken) {
+    closeHistoryLayer(layerToken)
+    return
+  }
   open.value = false
   nextTick(() => triggerRef.value?.focus())
 }
@@ -82,12 +100,14 @@ watch(open, (isOpen) => {
 
 onBeforeUnmount(() => {
   document.removeEventListener('keydown', onKeydown)
+  cancelHistoryLayer(layerToken)
+  layerToken = null
 })
 </script>
 
 <template>
-  <div class="m3-select">
-    <span v-if="label" class="m3-field__label">{{ label }}</span>
+  <div class="m3-select" :class="{ 'm3-select--row': variant === 'row' }">
+    <span v-if="label && variant !== 'row'" class="m3-field__label">{{ label }}</span>
     <button
       ref="triggerRef"
       type="button"
@@ -95,12 +115,16 @@ onBeforeUnmount(() => {
       :disabled="disabled"
       aria-haspopup="listbox"
       :aria-expanded="open"
+      :aria-label="ariaLabel || label || selected?.label"
       @click="openSheet"
     >
-      <span class="m3-select__copy">
+      <span v-if="variant !== 'row'" class="m3-select__copy">
         <strong>{{ selected?.label }}</strong>
         <small v-if="selected?.description">{{ selected.description }}</small>
       </span>
+      <slot v-else name="trigger" :selected="selected">
+        <strong>{{ selected?.label }}</strong>
+      </slot>
       <ChevronDown :size="20" />
     </button>
 
@@ -137,6 +161,7 @@ onBeforeUnmount(() => {
                 :aria-selected="option.value === modelValue"
                 @click="choose(option.value)"
               >
+                <slot name="option-preview" :option="option" />
                 <span class="m3-select__option-copy">
                   <strong>{{ option.label }}</strong>
                   <small v-if="option.description">{{ option.description }}</small>
@@ -171,7 +196,7 @@ onBeforeUnmount(() => {
   color: var(--md-sys-color-on-surface);
   text-align: left;
   cursor: pointer;
-  transition: border-color 160ms ease, background-color 160ms ease, border-radius 220ms var(--m3e-ease-expressive);
+  transition: border-color 130ms ease, background-color 130ms ease;
 }
 
 .m3-select__trigger:hover {
@@ -184,8 +209,7 @@ onBeforeUnmount(() => {
 }
 
 :root[data-theme='dark'] .m3-select__trigger:hover {
-  background: var(--md-sys-color-surface-container-highest);
-  filter: brightness(1.06);
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, var(--md-sys-color-surface-container-highest));
 }
 
 .m3-select__trigger[aria-expanded='true'] {
@@ -196,6 +220,36 @@ onBeforeUnmount(() => {
 .m3-select__trigger:disabled {
   cursor: not-allowed;
   opacity: 0.48;
+}
+
+.m3-select--row .m3-select__trigger {
+  justify-content: flex-end;
+  width: auto;
+  min-width: 88px;
+  min-height: 44px;
+  padding: 0 2px 0 8px;
+  border: 0;
+  border-radius: var(--m3e-radius-sm);
+  background: transparent;
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 14px;
+  font-weight: 560;
+}
+
+.m3-select--row .m3-select__trigger:hover,
+.m3-select--row .m3-select__trigger[aria-expanded='true'] {
+  border: 0;
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 7%, transparent);
+}
+
+:root[data-theme='dark'] .m3-select--row .m3-select__trigger,
+:root[data-theme='dark'] .m3-select--row .m3-select__trigger:hover {
+  background: transparent;
+}
+
+:root[data-theme='dark'] .m3-select--row .m3-select__trigger:hover,
+:root[data-theme='dark'] .m3-select--row .m3-select__trigger[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
 }
 
 .m3-select__copy {

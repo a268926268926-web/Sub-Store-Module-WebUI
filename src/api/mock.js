@@ -35,6 +35,13 @@ const mockAutoUpdateState = {
   nextRun: '',
 }
 
+function nextMockRun(intervalDays, hour, minute) {
+  const date = new Date()
+  date.setDate(date.getDate() + intervalDays)
+  date.setHours(hour, minute, 0, 0)
+  return date.getTime()
+}
+
 // 模拟 sub_store.env 内容，供浏览器 dev 调试编辑器
 const MOCK_ENV = `##!/system/bin/sh
 # ============================================================
@@ -175,7 +182,11 @@ export function mockExec(command, options = {}) {
                 ? Number(mockAutoUpdateState.intervalDays) || 7
                 : 1
               mockAutoUpdateState.nextRun = mockAutoUpdateState.enabled
-                ? Date.now() + intervalDays * 86400000
+                ? nextMockRun(
+                    intervalDays,
+                    Number(mockAutoUpdateState.hour) || 0,
+                    Number(mockAutoUpdateState.minute) || 0,
+                  )
                 : ''
               mockAutoUpdateState.daemonRunning = mockAutoUpdateState.enabled
             } catch {

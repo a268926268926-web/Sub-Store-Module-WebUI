@@ -1,5 +1,5 @@
 <script setup>
-import { computed, defineAsyncComponent, nextTick, onMounted, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onMounted, provide, ref, watch } from 'vue'
 import {
   Info,
   LayoutDashboard,
@@ -13,19 +13,25 @@ import {
 import { isBrowserDev, MODULE_VERSION, requestFullScreen } from './api/module'
 import { useMonetTheme } from './composables/useMonetTheme'
 import { useModuleState } from './composables/useModuleState'
-import { useStoredTheme } from './composables/useStoredTheme'
+import { useStoredTheme, withThemeTransition } from './composables/useStoredTheme'
 import { useToast } from './composables/useToast'
 import PageLoading from './components/PageLoading.vue'
 
 const subtitle = MODULE_VERSION ? `v${MODULE_VERSION}` : ''
 useMonetTheme()
 
-const pages = [
-  defineAsyncComponent(() => import('./pages/OverviewPage.vue')),
-  defineAsyncComponent(() => import('./pages/UpdatesPage.vue')),
-  defineAsyncComponent(() => import('./pages/SettingsPage.vue')),
-  defineAsyncComponent(() => import('./pages/AboutPage.vue')),
+const pageLoaders = [
+  () => import('./pages/OverviewPage.vue'),
+  () => import('./pages/UpdatesPage.vue'),
+  () => import('./pages/SettingsPage.vue'),
+  () => import('./pages/AboutPage.vue'),
 ]
+const pages = pageLoaders.map((loader) => defineAsyncComponent({
+  loader,
+  delay: 180,
+  timeout: 10000,
+  loadingComponent: PageLoading,
+}))
 
 const navItems = [
   {
@@ -49,9 +55,10 @@ const navItems = [
 const navIndex = ref(0)
 const activePage = computed(() => pages[navIndex.value])
 const activeNav = computed(() => navItems[navIndex.value])
-const pagePending = ref(false)
-const { busy, loading } = useModuleState()
-const showProgress = computed(() => pagePending.value || busy.value || loading.value)
+const pageHeroHidden = ref(false)
+provide('pageHeroHidden', pageHeroHidden)
+const { busy } = useModuleState()
+const showProgress = computed(() => busy.value)
 
 const { mode, setThemeMode } = useStoredTheme()
 const themeIcon = computed(() => {
@@ -67,7 +74,7 @@ const themeTitle = computed(() => {
 
 function cycleTheme() {
   const next = { system: 'light', light: 'dark', dark: 'system' }
-  setThemeMode(next[mode.value] || 'system')
+  withThemeTransition(() => setThemeMode(next[mode.value] || 'system'))
 }
 
 const scrollerRef = ref(null)
@@ -104,6 +111,16 @@ onMounted(() => {
     insets.href = 'https://mui.kernelsu.org/internal/insets.css'
     document.head.append(insets)
   }
+  const prefetch = () => {
+    for (const loader of pageLoaders.slice(1)) {
+      loader().catch(() => {})
+    }
+  }
+  if ('requestIdleCallback' in window) {
+    window.requestIdleCallback(prefetch, { timeout: 1800 })
+  } else {
+    window.setTimeout(prefetch, 600)
+  }
 })
 
 </script>
@@ -129,18 +146,13 @@ onMounted(() => {
     <main class="app-viewport">
       <div ref="scrollerRef" class="app-scroll" @scroll.passive="handleScroll">
         <div class="page-content" :data-module-version="subtitle">
-          <header class="page-hero">
+          <header v-show="!pageHeroHidden" class="page-hero">
             <h1 class="page-hero__title">{{ activeNav.title }}</h1>
           </header>
           <Transition name="page" mode="out-in">
-            <Suspense @pending="pagePending = true" @resolve="pagePending = false">
-              <KeepAlive>
-                <component :is="activePage" :key="navIndex" />
-              </KeepAlive>
-              <template #fallback>
-                <PageLoading />
-              </template>
-            </Suspense>
+            <KeepAlive>
+              <component :is="activePage" :key="navIndex" />
+            </KeepAlive>
           </Transition>
         </div>
       </div>
