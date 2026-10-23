@@ -31,7 +31,7 @@ import { createMonetPalettes } from '../theme/monet'
 import M3LoadingIndicator from '../components/M3LoadingIndicator.vue'
 import M3Select from '../components/M3Select.vue'
 
-const { status, busy, refreshStatus, runAction } = useModuleState()
+const { status, stale, busy, refreshStatus, runAction } = useModuleState()
 const { mode, setThemeMode, pureBlack, setPureBlack } = useStoredTheme()
 const pageHeroHidden = inject('pageHeroHidden', ref(false))
 const {
@@ -71,7 +71,7 @@ const currentModeLabel = computed(() => (
   themeModes.find((item) => item.value === mode.value)?.label || '跟随系统'
 ))
 const currentPaletteLabel = computed(() => (
-  paletteOptions.value.find((item) => item.value === themePalette.value)?.label || 'Tonal Spot'
+  paletteNames[themePalette.value] || 'Tonal Spot'
 ))
 const themeSummary = computed(() => (
   `${currentModeLabel.value} · ${currentPaletteLabel.value}${pureBlack.value ? ' · 纯黑' : ''}`
@@ -222,6 +222,7 @@ onBeforeUnmount(releaseLayers)
               <input
                 type="checkbox"
                 :checked="status.autostart"
+                :disabled="busy || stale"
                 @change="handleAutostartToggle"
               >
               <span class="m3e-switch__track">
@@ -391,7 +392,7 @@ onBeforeUnmount(releaseLayers)
             type="button"
             class="m3e-button m3e-button--tonal m3e-button--wide"
             :class="{ 'is-loading': busy }"
-            :disabled="busy"
+            :disabled="busy || stale"
             @click="runAction('regenerate-backend-path', () => moduleApi.regenerateBackendPath())"
           >
             <M3LoadingIndicator v-if="busy" :size="19" tone="inherit" />

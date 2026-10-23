@@ -274,6 +274,14 @@ textarea:focus-visible {
   background: var(--md-sys-color-surface-container-high);
 }
 
+.icon-button:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
+.is-spinning { animation: control-spin 800ms linear infinite; }
+@keyframes control-spin { to { transform: rotate(360deg); } }
+
 .icon-button:active {
   transform: scale(0.9);
 }
@@ -428,6 +436,15 @@ textarea:focus-visible {
 .m3e-button--danger {
   background: var(--md-sys-color-error-container);
   color: var(--md-sys-color-on-error-container);
+}
+
+.m3e-button--text {
+  min-height: 46px;
+  padding: 0 12px;
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font-size: 13px;
+  box-shadow: none;
 }
 
 .m3e-button--wide {

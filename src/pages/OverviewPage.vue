@@ -1,13 +1,13 @@
 <script setup>
-import { computed, onActivated, ref } from 'vue'
+import { computed, onActivated } from 'vue'
 import {
+  ArrowUpRight,
   ChevronDown,
-  CircleCheck,
-  ExternalLink,
-  Link2,
+  ChevronRight,
+  CircleAlert,
   LoaderCircle,
   Play,
-  Power,
+  RefreshCw,
   RotateCw,
   Server,
   ShieldAlert,
@@ -15,8 +15,7 @@ import {
   Square,
 } from '@lucide/vue'
 import { useModuleState } from '../composables/useModuleState'
-import { useOperationLog } from '../composables/useOperationLog'
-import { showToast } from '../composables/useToast'
+import { useServiceControl } from '../composables/useServiceControl'
 import OperationLogPanel from '../components/OperationLogPanel.vue'
 import * as moduleApi from '../api/module'
 import {
@@ -25,780 +24,581 @@ import {
   serviceStateText,
 } from '../utils/overview'
 
-const { status, loading, busy, error, refreshStatus, runAction } = useModuleState()
+const emit = defineEmits(['open-settings'])
+const {
+  status,
+  loading,
+  refreshing,
+  stale,
+  statusError,
+  refreshedAt,
+  busy,
+  error,
+  refreshStatus,
+  runAction,
+} = useModuleState()
+const { pending, action, content, visible, run } = useServiceControl()
 
 onActivated(() => {
-  refreshStatus(false)
-})
-
-const metricItems = computed(() => {
-  if (!status.value) {
-    const value = loading.value ? '读取中' : '不可用'
-    return [
-      { label: '开机自启', value, icon: Power },
-      { label: '配置状态', value, icon: CircleCheck },
-      { label: '运行用户', value, icon: ShieldAlert },
-    ]
-  }
-  return [
-    {
-      label: '开机自启',
-      value: status.value.autostart ? '已启用' : '已禁用',
-      icon: Power,
-    },
-    {
-      label: '配置状态',
-      value: status.value.configModified ? '等待重启' : '正常',
-      icon: CircleCheck,
-    },
-    {
-      label: '运行用户',
-      value: status.value.runUserIsRoot ? 'ROOT' : 'SHELL',
-      icon: ShieldAlert,
-    },
-  ]
-})
-
-const serviceActions = computed(() => {
-  if (!status.value) return []
-  if (status.value.serviceRunning) {
-    return [
-      { name: 'restart', title: '重启服务', icon: RotateCw, tone: 'tonal' },
-      { name: 'stop', title: '停止服务', icon: Square, tone: 'outline' },
-    ]
-  }
-  return [{ name: 'start', title: '启动服务', icon: Play, tone: 'filled', wide: true }]
+  refreshStatus()
 })
 
 const addresses = computed(() => buildServiceAddresses(status.value))
+const panelAddress = computed(() =>
+  addresses.value.find((item) => item.openValue),
+)
+const backendAddress = computed(() =>
+  addresses.value.find((item) => !item.openValue),
+)
+const controlsDisabled = computed(
+  () => busy.value || stale.value || !status.value,
+)
+const stateLabel = computed(() =>
+  serviceStateText({
+    status: status.value,
+    loading: loading.value,
+    stale: stale.value,
+    pendingAction: pending.value,
+    currentAction: action.value,
+  }),
+)
+const serviceContext = computed(() => {
+  if (!status.value) return serviceModeText(null, loading.value)
+  return `${serviceModeText(status.value)} · ${status.value.runUserIsRoot ? 'ROOT' : 'SHELL'}`
+})
 
-const { content, visible } = useOperationLog()
-const currentAction = ref('')
-const pendingAction = ref(false)
-const expandedIssue = ref('')
-
-const serviceStateLabel = computed(() => serviceStateText({
-  status: status.value,
-  loading: loading.value,
-  pendingAction: pendingAction.value,
-  currentAction: currentAction.value,
-}))
-const serviceMode = computed(() => serviceModeText(status.value, loading.value))
-
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
-
-async function pollUntil(predicate, timeoutMs, intervalMs = 600, onPoll) {
-  const deadline = Date.now() + timeoutMs
-  while (Date.now() < deadline) {
-    await refreshStatus(false)
-    if (onPoll) await onPoll()
-    if (predicate()) return true
-    await sleep(intervalMs)
+function openPanel() {
+  if (
+    panelAddress.value &&
+    !controlsDisabled.value &&
+    status.value?.serviceRunning
+  ) {
+    runAction('open', () => moduleApi.openUrl(panelAddress.value.openValue))
   }
-  return false
-}
-
-async function pollServiceState(name, onPoll) {
-  if (name === 'restart') {
-    const stopped = await pollUntil(() => status.value?.serviceRunning === false, 6000, 600, onPoll)
-    if (!stopped) return false
-    return pollUntil(() => status.value?.serviceRunning === true, 15000, 600, onPoll)
-  } else if (name === 'start') {
-    return pollUntil(() => status.value?.serviceRunning === true, 12000, 600, onPoll)
-  }
-  return pollUntil(() => status.value?.serviceRunning === false, 10000, 600, onPoll)
-}
-
-async function handleServiceAction(name) {
-  currentAction.value = name
-  pendingAction.value = true
-  visible.value = true
-  content.value = '正在执行，等待输出…'
-  try {
-    const result = await moduleApi.runBackground(name)
-    if (!result.ok) throw new Error(result.stderr || '指令发送失败')
-    if (!moduleApi.isBrowserDev) {
-      const confirmed = await pollServiceState(name, async () => {
-        const log = await moduleApi.getLog().catch(() => '')
-        if (log) content.value = log
-      })
-      if (!confirmed) {
-        const current = status.value == null
-          ? '状态未知'
-          : status.value.serviceRunning ? '运行中' : '已停止'
-        throw new Error(`操作已发出，但服务状态未能确认（当前为${current}）`)
-      }
-    }
-    content.value = await moduleApi.getLog().catch(() => '')
-    visible.value = true
-    showToast(name === 'restart' ? '服务已重启' : name === 'start' ? '服务已启动' : '服务已停止')
-  } catch (err) {
-    error.value = err?.message || '操作失败'
-    showToast(error.value, { tone: 'error' })
-  } finally {
-    pendingAction.value = false
-    currentAction.value = ''
-  }
-}
-
-function handleOpen(item) {
-  if (item?.openValue && !busy.value) {
-    runAction('open', () => moduleApi.openUrl(item.openValue))
-  }
-}
-
-function toggleIssue(title) {
-  expandedIssue.value = expandedIssue.value === title ? '' : title
 }
 
 const securityIssues = computed(() => {
   if (!status.value) return []
   const issues = []
-  if (status.value.backendPathIsDefault) {
+  if (status.value.backendPathIsDefault)
     issues.push({
-      title: '访问路径仍为模块默认值',
-      shortTitle: '默认访问路径',
-      hint: '入口仍与默认值相同',
-      text: '建议在配置页重新生成随机路径，避免不同安装实例使用同一入口。',
+      title: '默认访问路径',
+      text: '在配置中生成随机路径，避免不同安装实例使用相同入口。',
     })
-  }
-  if (status.value.backendPathIsEmpty && status.value.crosAllowedOriginsIsAll) {
+  if (status.value.backendPathIsEmpty && status.value.crosAllowedOriginsIsAll)
     issues.push({
-      title: '开放路径与跨域策略较宽',
-      shortTitle: '跨域范围过宽',
-      hint: '允许所有来源访问',
-      text: '后端路径为根路径且允许所有来源，建议生成随机路径或限制可信来源。',
+      title: '跨域范围过宽',
+      text: '当前入口为根路径且允许所有来源，建议设置随机路径或限制可信来源。',
     })
-  }
-  if (status.value.runUserIsRoot) {
+  if (status.value.runUserIsRoot)
     issues.push({
-      title: '服务正在以 root 运行',
-      shortTitle: 'Root 运行',
-      hint: '建议改用 shell',
-      text: '除非确有权限需求，建议将 run_as_user 改为 shell，缩小服务被利用后的影响面。',
+      title: 'Root 运行',
+      text: '如无额外权限需求，可将 sub_store.config 中的 run_as_user 改为 shell。',
     })
-  }
   return issues
+})
+const securitySummary = computed(() => {
+  if (!status.value) return loading.value ? '正在读取配置' : '暂时无法检查'
+  if (stale.value) return '上次检查结果，等待刷新'
+  return securityIssues.value.length
+    ? `${securityIssues.value.length} 项建议待查看`
+    : '未发现配置提醒'
 })
 </script>
 
 <template>
   <div class="overview-page">
-    <div class="overview-layout">
-      <section class="overview-section overview-section--service" aria-labelledby="service-heading">
-        <div class="overview-section__heading">
-          <h2 id="service-heading">服务</h2>
-          <span>{{ serviceMode }}</span>
-        </div>
-
-        <div class="service-panel m3e-card">
-          <div class="service-header">
-            <span class="service-header__icon">
-              <Server :size="23" />
-            </span>
-            <div class="service-header__copy">
-              <div class="service-header__title-line">
-                <h3>Sub-Store</h3>
-                <span
-                  class="service-state"
-                  :class="{
-                    'is-running': status?.serviceRunning && !pendingAction,
-                    'is-pending': pendingAction,
-                    'is-unavailable': !status,
-                  }"
-                  aria-live="polite"
-                >
-                  <i aria-hidden="true" />
-                  {{ serviceStateLabel }}
-                </span>
-              </div>
-              <p>
-                Android 订阅管理服务
-                <template v-if="status"> · {{ status.runUserIsRoot ? 'ROOT' : 'SHELL' }}</template>
-              </p>
-            </div>
-            <div class="service-actions">
-              <button
-                v-for="action in serviceActions"
-                :key="action.name"
-                type="button"
-                class="m3e-button service-action-button"
-                :class="{
-                  'm3e-button--tonal': action.tone === 'tonal',
-                  'm3e-button--outline': action.tone === 'outline',
-                  'service-action-button--wide': action.wide,
-                  'is-loading': pendingAction && currentAction === action.name,
-                }"
-                :title="action.title"
-                :aria-label="action.title"
-                :disabled="pendingAction"
-                @click="handleServiceAction(action.name)"
-              >
-                <LoaderCircle
-                  v-if="pendingAction && currentAction === action.name"
-                  :size="18"
-                  class="service-action-spinner"
-                  aria-hidden="true"
-                />
-                <component :is="action.icon" v-else :size="18" />
-                <span v-if="action.wide">
-                  {{ pendingAction && currentAction === action.name ? '处理中' : '启动' }}
-                </span>
-              </button>
-            </div>
-          </div>
-
-          <div class="service-metrics" aria-label="服务运行详情">
-            <div v-for="item in metricItems" :key="item.label" class="service-metric">
-              <span class="service-metric__icon">
-                <component :is="item.icon" :size="17" />
-              </span>
-              <span class="service-metric__copy">
-                <span>{{ item.label }}</span>
-                <strong>{{ item.value }}</strong>
-              </span>
-            </div>
-          </div>
-
-          <template
-            v-for="item in addresses"
-            :key="item.label"
-          >
-            <button
-              v-if="item.openValue"
-              type="button"
-              class="endpoint-row"
-              :disabled="busy"
-              :aria-label="`打开${item.label}`"
-              @click="handleOpen(item)"
-            >
-              <Link2 :size="20" class="endpoint-row__icon" />
-              <span class="endpoint-row__copy">
-                <span>{{ item.label }}</span>
-                <code>{{ item.displayValue }}</code>
-              </span>
-              <LoaderCircle
-                v-if="busy"
-                :size="18"
-                class="endpoint-row__loading"
-                aria-hidden="true"
-              />
-              <ExternalLink v-else :size="18" class="endpoint-row__arrow" />
-            </button>
-            <div v-else class="endpoint-row endpoint-row--static">
-              <Link2 :size="20" class="endpoint-row__icon" />
-              <span class="endpoint-row__copy">
-                <span>{{ item.label }}</span>
-                <code>{{ item.displayValue }}</code>
-              </span>
-            </div>
-          </template>
-          <div v-if="!status" class="endpoint-row endpoint-row--static">
-            <Link2 :size="20" class="endpoint-row__icon" />
-            <span class="endpoint-row__copy">
-              <span>访问地址</span>
-              <code>{{ loading ? '正在读取运行状态…' : '状态不可用' }}</code>
-            </span>
-          </div>
-        </div>
-      </section>
-
-      <section class="overview-section overview-section--security" aria-labelledby="security-heading">
-        <div class="overview-section__heading">
-          <h2 id="security-heading">安全建议</h2>
-          <span
-            v-if="securityIssues.length"
-            class="m3e-chip m3e-chip--warning"
-          >{{ securityIssues.length }} 项</span>
-          <span v-else-if="status">未发现风险</span>
-          <span v-else>{{ loading ? '读取中' : '状态不可用' }}</span>
-        </div>
-
-        <div class="security-panel m3e-card">
-          <template v-if="status && securityIssues.length">
-            <button
-              v-for="issue in securityIssues"
-              :key="issue.title"
-              type="button"
-              class="security-row"
-              :class="{ 'is-expanded': expandedIssue === issue.title }"
-              :aria-expanded="expandedIssue === issue.title"
-              @click="toggleIssue(issue.title)"
-            >
-              <span class="security-row__icon">
-                <ShieldAlert :size="19" />
-              </span>
-              <span class="security-row__copy">
-                <strong>{{ issue.shortTitle }}</strong>
-                <small>{{ expandedIssue === issue.title ? issue.text : issue.hint }}</small>
-              </span>
-              <ChevronDown :size="18" class="security-row__chevron" aria-hidden="true" />
-            </button>
-          </template>
-          <div v-else-if="status" class="security-safe">
-            <span><ShieldCheck :size="21" /></span>
-            <div>
-              <strong>当前配置正常</strong>
-              <small>没有发现需要处理的访问或权限风险。</small>
-            </div>
-          </div>
-          <div v-else class="security-safe">
-            <span>
-              <LoaderCircle
-                v-if="loading"
-                :size="20"
-                class="security-loading-spinner"
-                aria-hidden="true"
-              />
-              <ShieldAlert v-else :size="20" />
-            </span>
-            <div>
-              <strong>{{ loading ? '正在读取安全状态' : '安全状态不可用' }}</strong>
-              <small>{{ loading ? '请稍候…' : (error || '请刷新后重试') }}</small>
-            </div>
-          </div>
-        </div>
-      </section>
+    <div v-if="statusError" class="status-notice" role="status">
+      <CircleAlert :size="20" aria-hidden="true" />
+      <div>
+        <strong>{{ stale ? '状态已过期' : '无法读取服务状态' }}</strong>
+        <p>
+          {{
+            stale ? `上次读取 ${refreshedAt}，请刷新后再操作。` : statusError
+          }}
+        </p>
+      </div>
+      <button
+        type="button"
+        class="icon-button"
+        aria-label="重试读取状态"
+        title="重试读取状态"
+        :disabled="refreshing"
+        @click="refreshStatus()"
+      >
+        <RefreshCw :size="19" :class="{ 'is-spinning': refreshing }" />
+      </button>
     </div>
 
+    <div class="overview-layout">
+      <section
+        class="service-overview m3e-card"
+        aria-labelledby="service-name"
+        :aria-busy="pending || loading"
+      >
+        <div class="service-summary">
+          <span class="service-symbol" aria-hidden="true"
+            ><Server :size="25" :stroke-width="1.7"
+          /></span>
+          <div class="service-summary__copy">
+            <span id="service-name" class="service-name">Sub-Store</span>
+            <h2 class="service-status" aria-live="polite">
+              <span
+                class="status-dot"
+                :class="{
+                  'is-running': status?.serviceRunning && !stale && !pending,
+                  'is-pending': pending,
+                }"
+                aria-hidden="true"
+              />
+              {{ stateLabel }}
+            </h2>
+          </div>
+          <button
+            type="button"
+            class="icon-button service-refresh"
+            aria-label="刷新服务状态"
+            title="刷新服务状态"
+            :disabled="refreshing || busy"
+            @click="refreshStatus(true)"
+          >
+            <RefreshCw :size="19" :class="{ 'is-spinning': refreshing }" />
+          </button>
+        </div>
+        <p class="service-context">{{ serviceContext }}</p>
+
+        <div class="service-launch">
+          <div class="service-address">
+            <span>{{ backendAddress ? '前端地址' : '访问地址' }}</span>
+            <code>{{
+              panelAddress?.displayValue || (loading ? '正在读取…' : '暂不可用')
+            }}</code>
+          </div>
+          <button
+            type="button"
+            class="m3e-button panel-open"
+            :disabled="
+              controlsDisabled || !status?.serviceRunning || !panelAddress
+            "
+            @click="openPanel"
+          >
+            打开面板 <ArrowUpRight :size="19" aria-hidden="true" />
+          </button>
+        </div>
+        <div v-if="backendAddress" class="backend-address">
+          <span>后端地址</span><code>{{ backendAddress.displayValue }}</code>
+        </div>
+
+        <dl class="service-facts">
+          <div>
+            <dt>开机自启</dt>
+            <dd>
+              {{ status ? (status.autostart ? '已启用' : '已关闭') : '—' }}
+            </dd>
+          </div>
+          <div>
+            <dt>配置状态</dt>
+            <dd :class="{ 'needs-attention': status?.configModified }">
+              {{
+                status ? (status.configModified ? '待重启生效' : '已生效') : '—'
+              }}
+            </dd>
+          </div>
+        </dl>
+
+        <div class="service-control-row">
+          <span>服务控制</span>
+          <div class="service-control-actions">
+            <button
+              v-if="!status?.serviceRunning"
+              type="button"
+              class="m3e-button m3e-button--text"
+              :disabled="controlsDisabled"
+              @click="run('start')"
+            >
+              <LoaderCircle
+                v-if="pending && action === 'start'"
+                :size="18"
+                class="is-spinning"
+              />
+              <Play v-else :size="18" />
+              {{ pending && action === 'start' ? '启动中' : '启动' }}
+            </button>
+            <template v-else>
+              <button
+                type="button"
+                class="m3e-button m3e-button--text"
+                :disabled="controlsDisabled"
+                @click="run('restart')"
+              >
+                <LoaderCircle
+                  v-if="pending && action === 'restart'"
+                  :size="18"
+                  class="is-spinning"
+                />
+                <RotateCw v-else :size="18" />
+                {{ pending && action === 'restart' ? '重启中' : '重启' }}
+              </button>
+              <button
+                type="button"
+                class="m3e-button m3e-button--text service-stop"
+                :disabled="controlsDisabled"
+                @click="run('stop')"
+              >
+                <LoaderCircle
+                  v-if="pending && action === 'stop'"
+                  :size="18"
+                  class="is-spinning"
+                />
+                <Square v-else :size="16" />
+                {{ pending && action === 'stop' ? '停止中' : '停止' }}
+              </button>
+            </template>
+          </div>
+        </div>
+      </section>
+
+      <aside class="overview-secondary">
+        <details class="security-disclosure">
+          <summary class="security-summary">
+            <span class="security-symbol" aria-hidden="true">
+              <ShieldAlert
+                v-if="securityIssues.length || !status"
+                :size="23"
+                :stroke-width="1.7"
+              />
+              <ShieldCheck v-else :size="23" :stroke-width="1.7" />
+            </span>
+            <span class="security-summary__copy">
+              <strong>安全建议</strong>
+              <span>{{ securitySummary }}</span>
+            </span>
+            <ChevronDown
+              :size="18"
+              class="security-chevron"
+              aria-hidden="true"
+            />
+          </summary>
+          <div class="security-content">
+            <template v-if="status">
+              <div
+                v-for="issue in securityIssues"
+                :key="issue.title"
+                class="security-issue"
+              >
+                <h3>{{ issue.title }}</h3>
+                <p>{{ issue.text }}</p>
+              </div>
+              <p v-if="!securityIssues.length" class="security-empty">
+                已检查访问路径、跨域设置与运行权限。
+              </p>
+              <button
+                type="button"
+                class="security-settings"
+                @click="emit('open-settings')"
+              >
+                前往配置 <ChevronRight :size="17" />
+              </button>
+            </template>
+            <p v-else class="security-empty">
+              {{
+                loading ? '读取服务状态后进行检查。' : '请先重试读取服务状态。'
+              }}
+            </p>
+          </div>
+        </details>
+      </aside>
+    </div>
+
+    <div v-if="error" class="m3e-error" role="status">
+      <CircleAlert :size="18" /><span>{{ error }}</span>
+    </div>
     <OperationLogPanel
       :visible="visible"
       :content="content"
-      :loading="pendingAction"
+      :loading="pending"
       title="本次操作日志"
     />
-
-    <div v-if="error" class="m3e-error">
-      <Power :size="18" />
-      <span>{{ error }}</span>
-    </div>
   </div>
 </template>
 
 <style scoped>
 .overview-layout {
   display: grid;
-  gap: 26px;
+  align-items: start;
+  gap: 20px;
 }
-
-.overview-section {
-  min-width: 0;
+.service-overview {
+  padding: 24px 22px 0;
+  background: var(--md-sys-color-surface-container);
 }
-
-.overview-section__heading {
+.service-summary {
   display: flex;
-  min-height: 30px;
   align-items: center;
-  gap: 9px;
-  margin: 0 8px 9px;
+  gap: 14px;
 }
-
-.overview-section__heading h2 {
-  margin: 0;
-  font-size: 14px;
-  font-weight: 610;
-  line-height: 1.3;
-}
-
-.overview-section__heading > span:not(.m3e-chip) {
-  min-width: 0;
-  margin-left: auto;
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 12px;
-}
-
-.overview-section__heading .m3e-chip {
-  margin-left: auto;
-}
-
-.service-panel {
-  background: var(--md-sys-color-surface-container-high);
-}
-
-.service-header {
-  display: flex;
-  min-height: 90px;
-  align-items: center;
-  gap: 13px;
-  padding: 18px 16px 16px 20px;
-}
-
-.service-header__icon {
+.service-symbol {
   display: grid;
   flex: none;
-  width: 30px;
-  height: 30px;
   place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 14px;
+  background: var(--md-sys-color-surface-container-highest);
   color: var(--md-sys-color-on-surface-variant);
 }
-
-.service-header__copy {
+.service-summary__copy {
   min-width: 0;
   flex: 1;
 }
-
-.service-header__title-line {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.service-header h3 {
-  overflow: hidden;
-  margin: 0;
-  font-size: 18px;
-  font-weight: 630;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.service-header p {
-  overflow: hidden;
-  margin: 3px 0 0;
+.service-name {
   color: var(--md-sys-color-on-surface-variant);
   font-size: 13px;
-  line-height: 1.4;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  font-weight: 550;
 }
-
-.service-state {
-  display: inline-flex;
-  flex: none;
+.service-status {
+  display: flex;
   align-items: center;
-  gap: 6px;
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 12px;
-  font-weight: 610;
+  gap: 9px;
+  margin: 2px 0 0;
+  font-size: 26px;
+  font-weight: 620;
+  line-height: 1.25;
 }
-
-.service-state i {
+.status-dot {
+  flex: none;
   width: 7px;
   height: 7px;
   border-radius: 50%;
-  background: var(--md-sys-color-error);
+  background: var(--md-sys-color-outline);
 }
-
-.service-state.is-running i {
+.status-dot.is-running {
   background: var(--md-sys-color-primary);
 }
-
-.service-state.is-pending i {
+.status-dot.is-pending {
   background: var(--md-sys-color-tertiary);
 }
-
-.service-state.is-unavailable i {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px var(--md-sys-color-outline);
+.service-refresh {
+  width: 44px;
+  height: 44px;
+  align-self: flex-start;
+  margin: -7px -10px 0 0;
 }
-
-.service-actions {
-  display: flex;
-  flex: none;
-  align-items: center;
-  gap: 6px;
-  margin-left: auto;
-}
-
-.service-action-button {
-  min-height: 42px;
-  width: 42px;
-  padding: 0;
-}
-
-.service-action-button--wide {
-  width: auto;
-  padding: 0 15px;
-  font-size: 14px;
-}
-
-.service-action-button.is-loading:disabled {
-  opacity: 1;
-}
-
-.service-action-spinner,
-.endpoint-row__loading {
-  animation: service-action-spin 720ms linear infinite;
-}
-
-@keyframes service-action-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.service-metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 32%, transparent);
-}
-
-.service-metric {
-  display: flex;
-  min-width: 0;
-  min-height: 68px;
-  align-items: center;
-  gap: 9px;
-  padding: 11px 13px;
-  border-right: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 28%, transparent);
-}
-
-.service-metric:last-child {
-  border-right: 0;
-}
-
-.service-metric__icon {
-  display: grid;
-  flex: none;
-  width: 18px;
-  height: 18px;
-  place-items: center;
+.service-context {
+  margin: 14px 0 0;
   color: var(--md-sys-color-on-surface-variant);
-}
-
-.service-metric__copy {
-  display: grid;
-  min-width: 0;
-  gap: 2px;
-}
-
-.service-metric__copy > span {
-  overflow: hidden;
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 11px;
-  line-height: 1.3;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.service-metric strong {
-  overflow-wrap: anywhere;
-  color: var(--md-sys-color-on-surface);
-  font-size: 14px;
-  font-weight: 620;
-  line-height: 1.35;
-}
-
-.endpoint-row {
-  display: flex;
-  width: 100%;
-  min-height: 70px;
-  align-items: center;
-  gap: 12px;
-  padding: 12px 16px 13px 20px;
-  border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 32%, transparent);
-  background: var(--md-sys-color-surface-container);
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.endpoint-row:hover {
-  background: var(--md-sys-color-surface-container-highest);
-}
-
-.endpoint-row--static {
-  cursor: default;
-}
-
-.endpoint-row--static:hover {
-  background: var(--md-sys-color-surface-container);
-}
-
-.endpoint-row:disabled {
-  cursor: wait;
-  opacity: 0.7;
-}
-
-.endpoint-row__icon {
-  flex: none;
-  color: var(--md-sys-color-on-surface-variant);
-}
-
-.endpoint-row__copy {
-  display: grid;
-  min-width: 0;
-  flex: 1;
-  gap: 3px;
-}
-
-.endpoint-row__copy > span {
-  color: var(--md-sys-color-on-surface-variant);
-  font-size: 11px;
-  font-weight: 610;
-}
-
-.endpoint-row code {
-  display: -webkit-box;
-  overflow: hidden;
-  color: var(--md-sys-color-on-surface);
-  font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code', 'Roboto Mono', 'Noto Sans Mono', monospace;
   font-size: 12px;
+}
+.service-launch {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+}
+.service-address {
+  display: grid;
+  min-width: 0;
+  gap: 4px;
+}
+.service-address > span,
+.backend-address > span {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+}
+.service-address code,
+.backend-address code {
+  font-family: ui-monospace, monospace;
+  font-size: 13px;
   line-height: 1.5;
   overflow-wrap: anywhere;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
 }
-
-.endpoint-row__arrow {
-  flex: none;
-  color: var(--md-sys-color-on-surface-variant);
+.panel-open {
+  min-height: 48px;
+  padding: 0 18px;
+  font-size: 14px;
+  box-shadow: none;
 }
-
-.security-panel {
-  overflow: hidden;
-  background: var(--md-sys-color-surface-container-high);
-}
-
-.security-row {
-  display: flex;
-  width: 100%;
-  min-height: 70px;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 15px 15px 15px 18px;
-  border: 0;
-  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 30%, transparent);
-  background: transparent;
-  color: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.security-row:first-child {
-  border-top: 0;
-}
-
-.security-row:hover {
-  background: color-mix(in srgb, var(--md-sys-color-on-surface) 4%, transparent);
-}
-
-.security-row__icon {
+.backend-address {
   display: grid;
-  flex: none;
-  width: 24px;
-  height: 24px;
-  place-items: center;
+  gap: 4px;
+  margin-top: 14px;
+}
+.service-facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 20px;
+  margin: 22px 0 20px;
+}
+.service-facts > div {
+  min-width: 0;
+}
+.service-facts dt {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+}
+.service-facts dd {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 580;
+  overflow-wrap: anywhere;
+}
+.service-facts dd.needs-attention {
   color: var(--md-sys-color-tertiary);
 }
-
-.security-row__copy {
+.service-control-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 62px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--md-sys-color-outline-variant) 40%, transparent);
+}
+.service-control-row > span {
+  color: var(--md-sys-color-on-surface-variant);
+  font-size: 12px;
+}
+.service-control-actions {
+  display: flex;
+  gap: 2px;
+  margin-right: -10px;
+}
+.service-stop {
+  color: var(--md-sys-color-on-surface-variant);
+}
+.security-disclosure {
+  padding: 0 4px;
+}
+.security-summary {
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  min-height: 76px;
+  padding: 12px 4px;
+  cursor: pointer;
+  list-style: none;
+  border-radius: 8px;
+}
+.security-summary::-webkit-details-marker {
+  display: none;
+}
+.security-summary:focus-visible {
+  outline: 2px solid var(--md-sys-color-primary);
+  outline-offset: 3px;
+}
+.security-symbol {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 28px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.security-summary__copy {
   display: grid;
   min-width: 0;
   flex: 1;
-  gap: 3px;
+  gap: 4px;
 }
-
-.security-row__copy strong {
-  font-size: 14px;
-  font-weight: 610;
-  line-height: 1.35;
+.security-summary__copy strong {
+  font-size: 15px;
+  font-weight: 600;
 }
-
-.security-row__copy small {
-  display: -webkit-box;
-  overflow: hidden;
+.security-summary__copy > span {
   color: var(--md-sys-color-on-surface-variant);
   font-size: 12px;
-  line-height: 1.5;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 1;
 }
-
-.security-row.is-expanded .security-row__copy small {
-  display: block;
-  overflow: visible;
-  -webkit-line-clamp: initial;
-}
-
-.security-row__chevron {
+.security-chevron {
   flex: none;
-  margin-top: 2px;
   color: var(--md-sys-color-on-surface-variant);
   transition: transform 150ms ease;
 }
-
-.security-row.is-expanded .security-row__chevron {
+.security-disclosure[open] .security-chevron {
   transform: rotate(180deg);
 }
-
-.security-safe {
-  display: flex;
-  min-height: 90px;
-  align-items: center;
-  gap: 12px;
-  padding: 16px 18px;
+.security-content {
+  margin-left: 45px;
 }
-
-.security-safe > span {
-  display: grid;
-  flex: none;
-  width: 28px;
-  height: 28px;
-  place-items: center;
-  color: var(--md-sys-color-primary);
+.security-issue {
+  padding: 13px 0;
+  border-top: 1px solid
+    color-mix(in srgb, var(--md-sys-color-outline-variant) 36%, transparent);
 }
-
-.security-safe div {
-  display: grid;
-  min-width: 0;
-  gap: 3px;
+.security-issue h3 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
 }
-
-.security-safe strong {
-  font-size: 14px;
-  font-weight: 610;
-}
-
-.security-safe small {
+.security-issue p,
+.security-empty {
+  margin: 5px 0 0;
   color: var(--md-sys-color-on-surface-variant);
   font-size: 12px;
-  line-height: 1.45;
+  line-height: 1.7;
 }
-
-.security-loading-spinner {
-  animation: service-action-spin 720ms linear infinite;
+.security-settings {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 48px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--md-sys-color-primary);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
 }
-
-@media (min-width: 850px) {
+.status-notice {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: var(--md-sys-color-surface-container);
+  color: var(--md-sys-color-on-surface-variant);
+}
+.status-notice > svg {
+  flex: none;
+}
+.status-notice > div {
+  flex: 1;
+  min-width: 0;
+}
+.status-notice strong {
+  font-size: 13px;
+  color: var(--md-sys-color-on-surface);
+}
+.status-notice p {
+  margin: 3px 0 0;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+@media (min-width: 1000px) {
   .overview-layout {
-    grid-template-columns: minmax(0, 1.55fr) minmax(250px, 0.85fr);
-    align-items: start;
-    gap: 16px;
+    grid-template-columns: minmax(0, 1.65fr) minmax(240px, 1fr);
+    gap: 28px;
+  }
+  .security-summary {
+    padding-top: 8px;
   }
 }
-
 @media (max-width: 360px) {
-  .service-header {
-    flex-wrap: wrap;
-    align-items: flex-start;
+  .service-overview {
+    padding: 20px 16px 0;
+  }
+  .service-status {
+    font-size: 23px;
+  }
+  .service-launch {
     gap: 10px;
-    padding-right: 12px;
-    padding-left: 16px;
   }
-
-  .service-header__copy {
-    flex-basis: calc(100% - 40px);
-  }
-
-  .service-actions {
-    align-self: flex-end;
-    margin-left: auto;
-  }
-
-  .service-metric {
-    gap: 7px;
-    padding-right: 9px;
-    padding-left: 9px;
-  }
-
-  .endpoint-row {
-    padding-right: 13px;
-    padding-left: 16px;
+  .panel-open {
+    gap: 5px;
+    padding: 0 12px;
+    font-size: 13px;
   }
 }
 </style>

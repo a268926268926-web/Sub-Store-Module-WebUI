@@ -151,7 +151,7 @@ onMounted(() => {
           </header>
           <Transition name="page" mode="out-in">
             <KeepAlive>
-              <component :is="activePage" :key="navIndex" />
+              <component :is="activePage" :key="navIndex" @open-settings="navIndex = 2" />
             </KeepAlive>
           </Transition>
         </div>

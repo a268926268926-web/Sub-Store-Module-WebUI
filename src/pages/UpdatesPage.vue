@@ -5,9 +5,7 @@ import {
   CircleAlert,
   Clock3,
   History,
-  Minus,
   Play,
-  Plus,
   RefreshCw,
   Save,
   TimerReset,
@@ -26,30 +24,89 @@ import {
   normalizeIntervalDays,
 } from '../utils/schedule'
 
-const { refreshStatus } = useModuleState()
-const { content, visible, pending, runWithLog, followAutoUpdate } = useOperationLog()
+const { busy, refreshStatus, acquireOperation, releaseOperation } =
+  useModuleState()
+const {
+  content,
+  visible,
+  pending,
+  result: updateResult,
+  runWithLog,
+  followAutoUpdate,
+} = useOperationLog()
 
 const options = [
-  { label: '全部更新', description: 'Sub-Store 前后端 + HTTP-META', value: 'all', command: 'update-all', args: [] },
-  { label: '更新前后端', description: 'Sub-Store 前端与后端', value: 'sub-store', command: 'update-sub-store', args: [] },
-  { label: '仅后端', description: '只替换 Sub-Store 后端', value: 'backend', command: 'update-backend', args: [] },
-  { label: '仅前端', description: '只替换 Sub-Store 前端', command: 'update-frontend', args: [], value: 'frontend' },
-  { label: 'HTTP-META 全部', description: 'JS + 模板 + Mihomo 内核', value: 'http-meta-all', command: 'update-http-meta', args: ['all'] },
-  { label: 'HTTP-META 脚本', description: '只更新 JS 与模板文件', value: 'http-meta-js', command: 'update-http-meta', args: ['js'] },
-  { label: 'Mihomo 稳定版', description: '更新稳定版内核', value: 'http-meta-kernel', command: 'update-http-meta', args: ['kernel'] },
-  { label: 'Mihomo Alpha', description: '更新预览版内核', value: 'http-meta-alpha', command: 'update-http-meta', args: ['kernel-alpha'] },
+  {
+    label: '全部更新',
+    description: 'Sub-Store 前后端 + HTTP-META',
+    value: 'all',
+    command: 'update-all',
+    args: [],
+  },
+  {
+    label: '更新前后端',
+    description: 'Sub-Store 前端与后端',
+    value: 'sub-store',
+    command: 'update-sub-store',
+    args: [],
+  },
+  {
+    label: '仅后端',
+    description: '只替换 Sub-Store 后端',
+    value: 'backend',
+    command: 'update-backend',
+    args: [],
+  },
+  {
+    label: '仅前端',
+    description: '只替换 Sub-Store 前端',
+    command: 'update-frontend',
+    args: [],
+    value: 'frontend',
+  },
+  {
+    label: 'HTTP-META 全部',
+    description: 'JS + 模板 + Mihomo 内核',
+    value: 'http-meta-all',
+    command: 'update-http-meta',
+    args: ['all'],
+  },
+  {
+    label: 'HTTP-META 脚本',
+    description: '只更新 JS 与模板文件',
+    value: 'http-meta-js',
+    command: 'update-http-meta',
+    args: ['js'],
+  },
+  {
+    label: 'Mihomo 稳定版',
+    description: '更新稳定版内核',
+    value: 'http-meta-kernel',
+    command: 'update-http-meta',
+    args: ['kernel'],
+  },
+  {
+    label: 'Mihomo Alpha',
+    description: '更新预览版内核',
+    value: 'http-meta-alpha',
+    command: 'update-http-meta',
+    args: ['kernel-alpha'],
+  },
 ]
 
 const selectedCommand = ref(options[0].value)
-const selectedOption = computed(() => (
-  options.find((option) => option.value === selectedCommand.value) || options[0]
-))
+const selectedOption = computed(
+  () =>
+    options.find((option) => option.value === selectedCommand.value) ||
+    options[0],
+)
 
 const autoStatus = ref(null)
 const autoLoading = ref(true)
 const autoSaving = ref(false)
 const autoRunPending = ref(false)
 const autoError = ref('')
+const autoStatusError = ref('')
 const formDirty = ref(false)
 let autoTimer
 let active = false
@@ -60,10 +117,17 @@ const form = reactive({
   hour: 4,
   minute: 30,
 })
-const autoControlsDisabled = computed(() => autoLoading.value || autoSaving.value)
+const autoControlsDisabled = computed(
+  () =>
+    autoLoading.value ||
+    autoSaving.value ||
+    !autoStatus.value ||
+    Boolean(autoStatusError.value),
+)
 
 const timeValue = computed({
-  get: () => `${String(form.hour).padStart(2, '0')}:${String(form.minute).padStart(2, '0')}`,
+  get: () =>
+    `${String(form.hour).padStart(2, '0')}:${String(form.minute).padStart(2, '0')}`,
   set: (value) => {
     const [hour, minute] = String(value).split(':').map(Number)
     if (Number.isInteger(hour) && Number.isInteger(minute)) {
@@ -76,6 +140,7 @@ const timeValue = computed({
 
 const scheduleLabel = computed(() => intervalLabel(form.intervalDays))
 const autoStatusText = computed(() => {
+  if (autoStatusError.value) return '状态待确认'
   if (!autoStatus.value) return '等待读取'
   if (autoStatus.value.configValid === false) return '配置异常'
   if (autoStatus.value.running) return '正在更新'
@@ -87,7 +152,9 @@ const autoStatusTone = computed(() => {
   if (autoStatus.value.configValid === false) return 'm3e-chip--error'
   if (autoStatus.value.running) return 'm3e-chip--warning'
   if (!autoStatus.value.enabled) return ''
-  return autoStatus.value.daemonRunning === false ? 'm3e-chip--error' : 'm3e-chip--success'
+  return autoStatus.value.daemonRunning === false
+    ? 'm3e-chip--error'
+    : 'm3e-chip--success'
 })
 const lastStatusText = computed(() => {
   const status = autoStatus.value?.lastStatus
@@ -111,13 +178,16 @@ const lastStatusTone = computed(() => {
 
 function hydrateForm(status, force = false) {
   if (!status || (!force && formDirty.value)) return
-  const days = status.schedule === 'daily'
-    ? 1
-    : status.intervalDays ?? (status.schedule === 'weekly' ? 7 : 1)
+  const days =
+    status.schedule === 'daily'
+      ? 1
+      : (status.intervalDays ?? (status.schedule === 'weekly' ? 7 : 1))
   form.enabled = status.enabled === true
   form.intervalDays = normalizeIntervalDays(days)
   form.hour = Number.isInteger(Number(status.hour)) ? Number(status.hour) : 4
-  form.minute = Number.isInteger(Number(status.minute)) ? Number(status.minute) : 30
+  form.minute = Number.isInteger(Number(status.minute))
+    ? Number(status.minute)
+    : 30
   formDirty.value = false
 }
 
@@ -126,13 +196,11 @@ function markFormDirty() {
 }
 
 function normalizeIntervalInput() {
-  form.intervalDays = normalizeIntervalDays(form.intervalDays)
-  formDirty.value = true
-}
-
-function stepInterval(delta) {
-  form.intervalDays = normalizeIntervalDays(Number(form.intervalDays) + delta)
-  formDirty.value = true
+  const normalized = normalizeIntervalDays(form.intervalDays)
+  if (form.intervalDays !== normalized) {
+    form.intervalDays = normalized
+    formDirty.value = true
+  }
 }
 
 function stopAutoPolling() {
@@ -153,22 +221,25 @@ function scheduleAutoPolling() {
 
 async function loadAutoStatus({ notify = false, silent = false } = {}) {
   if (!silent) autoLoading.value = true
-  autoError.value = ''
   try {
     const status = await moduleApi.getAutoUpdateStatus()
     if (!active) return
     autoStatus.value = status
+    autoStatusError.value = ''
     hydrateForm(status)
     if (notify) showToast('自动更新状态已刷新')
     if (status.running) scheduleAutoPolling()
   } catch (err) {
-    autoError.value = err?.message || '读取自动更新状态失败'
+    if (active) autoStatusError.value = err?.message || '读取自动更新状态失败'
   } finally {
     if (!silent) autoLoading.value = false
   }
 }
 
 async function saveAutoPlan() {
+  if (autoControlsDisabled.value) return
+  const token = acquireOperation('save-auto-plan')
+  if (!token) return
   normalizeIntervalInput()
   autoSaving.value = true
   autoError.value = ''
@@ -182,26 +253,38 @@ async function saveAutoPlan() {
     })
     autoStatus.value = status
     hydrateForm(status, true)
-    showToast(form.enabled ? `自动更新已设为${scheduleLabel.value}` : '自动更新已关闭')
+    showToast(
+      form.enabled ? `自动更新已设为${scheduleLabel.value}` : '自动更新已关闭',
+    )
   } catch (err) {
     autoError.value = err?.message || '保存自动更新配置失败'
     showToast(autoError.value, { tone: 'error' })
   } finally {
     autoSaving.value = false
+    releaseOperation(token)
   }
 }
 
 async function handleManualUpdate() {
+  if (
+    busy.value ||
+    autoLoading.value ||
+    autoStatusError.value ||
+    autoStatus.value?.running
+  )
+    return
   const option = selectedOption.value
   const ok = await runWithLog(option.command, {}, option.args)
-  await Promise.all([
-    refreshStatus(false),
-    loadAutoStatus(),
-  ])
-  showToast(ok ? '更新任务已结束' : '更新任务失败', { tone: ok ? 'neutral' : 'error' })
+  await Promise.all([refreshStatus(false), loadAutoStatus()])
+  showToast(updateResult.value?.message || (ok ? '更新完成' : '未能启动更新'), {
+    tone: ok ? 'neutral' : 'error',
+  })
 }
 
 async function runAutoNow() {
+  if (autoControlsDisabled.value || autoStatus.value?.running) return
+  const token = acquireOperation('auto-update-now')
+  if (!token) return
   autoRunPending.value = true
   autoError.value = ''
   visible.value = true
@@ -213,18 +296,20 @@ async function runAutoNow() {
     }
     scheduleAutoPolling()
     const finalStatus = await followAutoUpdate()
-    const ok = finalStatus?.lastStatus === 'success'
-    await Promise.all([
-      refreshStatus(false),
-      loadAutoStatus(),
-    ])
-    showToast(ok ? '自动更新测试已完成' : '自动更新测试失败', { tone: ok ? 'neutral' : 'error' })
+    if (!finalStatus)
+      throw new Error('等待超时，更新可能仍在后台运行，请刷新状态确认')
+    const ok = ['success', 'complete'].includes(finalStatus.lastStatus)
+    await Promise.all([refreshStatus(false), loadAutoStatus()])
+    if (!ok)
+      throw new Error(finalStatus.lastResult || '自动更新失败，请查看日志')
+    showToast('自动更新已完成')
   } catch (err) {
     autoError.value = err?.message || '立即执行失败'
     showToast(autoError.value, { tone: 'error' })
   } finally {
     autoRunPending.value = false
     stopAutoPolling()
+    releaseOperation(token)
   }
 }
 
@@ -248,19 +333,33 @@ onDeactivated(() => {
       </div>
     </div>
     <div class="m3e-card m3e-card__body manual-update-card">
-      <M3Select
-        v-model="selectedCommand"
-        label="更新项"
-        :options="options"
-        :disabled="pending"
-      />
+      <div class="manual-update-field">
+        <span>更新组件</span>
+        <M3Select
+          v-model="selectedCommand"
+          variant="row"
+          label="更新组件"
+          :options="options"
+          :disabled="
+            busy ||
+            autoLoading ||
+            Boolean(autoStatusError) ||
+            autoStatus?.running
+          "
+        />
+      </div>
       <div class="update-action-row">
-        <span>Alpha 内核需要手动选择</span>
+        <span>{{ selectedOption.description }}</span>
         <button
           type="button"
           class="m3e-button"
           :class="{ 'is-loading': pending }"
-          :disabled="pending"
+          :disabled="
+            busy ||
+            autoLoading ||
+            Boolean(autoStatusError) ||
+            autoStatus?.running
+          "
           @click="handleManualUpdate"
         >
           <M3LoadingIndicator v-if="pending" :size="20" tone="inherit" />
@@ -269,6 +368,15 @@ onDeactivated(() => {
         </button>
       </div>
     </div>
+    <p
+      v-if="updateResult"
+      class="update-result"
+      :class="{ 'is-error': updateResult.state !== 'success' }"
+      role="status"
+    >
+      <CircleAlert v-if="updateResult.state !== 'success'" :size="17" />
+      {{ updateResult.message }}
+    </p>
 
     <div class="section-heading">
       <div class="section-heading__copy">
@@ -292,7 +400,11 @@ onDeactivated(() => {
           <span class="m3e-list-row__copy">
             <span class="m3e-list-row__title">定时执行全部更新</span>
             <span class="m3e-list-row__summary">
-              {{ form.enabled ? `${scheduleLabel} · ${timeValue}` : '关闭时不会创建后台计划' }}
+              {{
+                form.enabled
+                  ? `${scheduleLabel} · ${timeValue}`
+                  : '关闭时不会创建后台计划'
+              }}
             </span>
           </span>
           <span class="m3e-switch" aria-label="启用自动更新">
@@ -301,7 +413,7 @@ onDeactivated(() => {
               type="checkbox"
               :disabled="autoControlsDisabled"
               @change="markFormDirty"
-            >
+            />
             <span class="m3e-switch__track">
               <span class="m3e-switch__thumb" />
             </span>
@@ -314,18 +426,11 @@ onDeactivated(() => {
           </span>
           <span class="m3e-list-row__copy">
             <span class="m3e-list-row__title">执行周期</span>
-            <span class="m3e-list-row__summary">{{ scheduleLabel }}执行一次</span>
-          </span>
-          <span class="interval-stepper">
-            <button
-              type="button"
-              class="interval-stepper__button"
-              aria-label="减少一天"
-              :disabled="autoControlsDisabled || form.intervalDays <= 1"
-              @click="stepInterval(-1)"
+            <span class="m3e-list-row__summary"
+              >{{ scheduleLabel }}执行一次</span
             >
-              <Minus :size="18" />
-            </button>
+          </span>
+          <span class="interval-input">
             <input
               v-model.number="form.intervalDays"
               type="number"
@@ -337,17 +442,8 @@ onDeactivated(() => {
               @input="markFormDirty"
               @blur="normalizeIntervalInput"
               @change="normalizeIntervalInput"
-            >
+            />
             <span>天</span>
-            <button
-              type="button"
-              class="interval-stepper__button"
-              aria-label="增加一天"
-              :disabled="autoControlsDisabled || form.intervalDays >= MAX_INTERVAL_DAYS"
-              @click="stepInterval(1)"
-            >
-              <Plus :size="18" />
-            </button>
           </span>
         </div>
 
@@ -357,7 +453,7 @@ onDeactivated(() => {
           </span>
           <span class="m3e-list-row__copy">
             <span class="m3e-list-row__title">执行时间</span>
-            <span class="m3e-list-row__summary">按设备本地时间运行</span>
+            <span class="m3e-list-row__summary">设备本地时间</span>
           </span>
           <input
             v-model="timeValue"
@@ -366,7 +462,7 @@ onDeactivated(() => {
             step="60"
             aria-label="自动更新时间"
             :disabled="autoControlsDisabled"
-          >
+          />
         </label>
       </div>
     </div>
@@ -392,10 +488,16 @@ onDeactivated(() => {
             <Clock3 :size="18" />
             上次结果
           </span>
-          <span class="m3e-chip" :class="lastStatusTone">{{ lastStatusText }}</span>
+          <span class="m3e-chip" :class="lastStatusTone">{{
+            lastStatusText
+          }}</span>
         </div>
         <div
-          v-if="autoStatus?.lastStatus && autoStatus.lastStatus !== 'never' && autoStatus.lastResult"
+          v-if="
+            autoStatus?.lastStatus &&
+            autoStatus.lastStatus !== 'never' &&
+            autoStatus.lastResult
+          "
           class="m3e-list-row auto-result-row"
         >
           <span>结果说明</span>
@@ -409,7 +511,7 @@ onDeactivated(() => {
         type="button"
         class="m3e-button m3e-button--tonal"
         :class="{ 'is-loading': autoSaving }"
-        :disabled="autoControlsDisabled"
+        :disabled="autoControlsDisabled || busy || !formDirty"
         @click="saveAutoPlan"
       >
         <M3LoadingIndicator v-if="autoSaving" :size="19" tone="inherit" />
@@ -420,7 +522,7 @@ onDeactivated(() => {
         type="button"
         class="m3e-button m3e-button--outline"
         :class="{ 'is-loading': autoRunPending || autoStatus?.running }"
-        :disabled="autoRunPending || pending || autoStatus?.running"
+        :disabled="autoControlsDisabled || busy || autoStatus?.running"
         @click="runAutoNow"
       >
         <M3LoadingIndicator
@@ -429,13 +531,24 @@ onDeactivated(() => {
           tone="inherit"
         />
         <Play v-else :size="18" />
-        {{ autoRunPending || autoStatus?.running ? '执行中' : '立即测试' }}
+        {{ autoRunPending || autoStatus?.running ? '执行中' : '立即执行' }}
       </button>
     </div>
 
-    <div v-if="autoError" class="m3e-error">
+    <div v-if="autoError || autoStatusError" class="m3e-error" role="status">
       <CircleAlert :size="18" />
-      <span>{{ autoError }}</span>
+      <span>{{ autoError || autoStatusError }}</span>
+      <button
+        v-if="autoStatusError"
+        type="button"
+        class="icon-button"
+        aria-label="重新读取更新状态"
+        title="重新读取更新状态"
+        :disabled="autoLoading"
+        @click="loadAutoStatus()"
+      >
+        <RefreshCw :size="18" />
+      </button>
     </div>
 
     <OperationLogPanel
@@ -451,22 +564,48 @@ onDeactivated(() => {
 <style scoped>
 .manual-update-card,
 .auto-update-card {
-  background: var(--md-sys-color-surface-container-high);
+  background: var(--md-sys-color-surface-container);
+}
+
+.manual-update-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.manual-update-field > span {
+  font-size: 14px;
+  color: var(--md-sys-color-on-surface-variant);
+}
+.update-result {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 12px 4px 0;
+  font-size: 13px;
+}
+.update-result.is-error {
+  color: var(--md-sys-color-error);
+}
+.update-result svg {
+  flex: none;
+  margin-top: 2px;
 }
 
 .update-action-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-top: 18px;
-  padding-top: 16px;
-  border-top: 1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 44%, transparent);
+  gap: 12px;
+  margin-top: 10px;
+  padding-top: 12px;
+  border-top: 1px solid
+    color-mix(in srgb, var(--md-sys-color-outline-variant) 44%, transparent);
 }
 
 .update-action-row span {
   color: var(--md-sys-color-on-surface-variant);
-  font-size: 14px;
+  font-size: 12px;
   line-height: 1.45;
 }
 
@@ -478,42 +617,20 @@ onDeactivated(() => {
   gap: 12px;
 }
 
-.interval-stepper {
+.interval-input {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   min-height: 44px;
-  padding: 2px;
-  border-radius: var(--m3e-radius-full);
+  padding: 0 12px 0 6px;
+  border-radius: var(--m3e-radius-sm);
   background: var(--md-sys-color-surface-container-highest);
 }
 
-.interval-stepper__button {
-  display: grid;
-  width: 40px;
-  height: 40px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  place-items: center;
-  background: transparent;
-  color: var(--md-sys-color-on-surface-variant);
-  cursor: pointer;
-}
-
-.interval-stepper__button:hover {
-  background: color-mix(in srgb, var(--md-sys-color-on-surface) 8%, transparent);
-}
-
-.interval-stepper__button:disabled {
-  cursor: not-allowed;
-  opacity: 0.32;
-}
-
-.interval-stepper input {
+.interval-input input {
   width: 42px;
-  height: 38px;
+  height: 44px;
   padding: 0;
   border: 0;
   background: transparent;
@@ -525,21 +642,21 @@ onDeactivated(() => {
   appearance: textfield;
 }
 
-.interval-stepper input::-webkit-inner-spin-button,
-.interval-stepper input::-webkit-outer-spin-button {
+.interval-input input::-webkit-inner-spin-button,
+.interval-input input::-webkit-outer-spin-button {
   margin: 0;
   appearance: none;
 }
 
-.interval-stepper > span {
-  margin-right: 7px;
+.interval-input > span {
   color: var(--md-sys-color-on-surface-variant);
   font-size: 13px;
 }
 
 .row-time-input {
   flex: none;
-  min-width: 112px;
+  width: 112px;
+  min-width: 100px;
   min-height: 44px;
   padding: 0 10px;
   border: 1px solid transparent;
@@ -602,32 +719,28 @@ onDeactivated(() => {
 }
 
 @media (max-width: 420px) {
-  .update-action-row {
-    align-items: stretch;
-    flex-direction: column;
+  .manual-update-card {
+    padding: 12px 16px 16px;
   }
-
-  .update-action-row .m3e-button {
-    align-self: flex-end;
-    width: auto;
-  }
-
   .auto-setting-row {
-    align-items: flex-start;
-    flex-wrap: wrap;
+    padding-right: 16px;
+    padding-left: 16px;
+    gap: 10px;
   }
-
-  .auto-setting-row .m3e-list-row__copy {
-    flex-basis: calc(100% - 40px);
+  .auto-setting-row .m3e-list-row__title {
+    font-size: 14px;
   }
-
-  .interval-stepper,
+  .auto-setting-row .m3e-list-row__summary {
+    font-size: 11px;
+  }
+  .auto-status-row {
+    padding-right: 16px;
+    padding-left: 16px;
+  }
   .row-time-input {
-    margin-left: 40px;
-  }
-
-  .row-time-input {
-    width: calc(100% - 40px);
+    padding-right: 0;
+    padding-left: 4px;
+    width: 104px;
   }
 }
 

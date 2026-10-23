@@ -34,7 +34,7 @@ export function buildServiceAddresses(status) {
   ]
 }
 
-export function serviceStateText({ status, loading, pendingAction, currentAction }) {
+export function serviceStateText({ status, loading, stale, pendingAction, currentAction }) {
   if (pendingAction) {
     return {
       restart: '正在重启',
@@ -43,6 +43,7 @@ export function serviceStateText({ status, loading, pendingAction, currentAction
     }[currentAction] || '处理中'
   }
   if (!status) return loading ? '正在读取' : '状态不可用'
+  if (stale) return '状态待确认'
   return status.serviceRunning ? '运行中' : '已停止'
 }
 

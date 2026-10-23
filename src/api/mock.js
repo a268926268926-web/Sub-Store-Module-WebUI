@@ -21,6 +21,8 @@ const MOCK_STATUS = {
   runUserIsRoot: true,
 }
 
+let mockUpdateRunning = false
+
 const mockAutoUpdateState = {
   enabled: false,
   schedule: 'daily',
@@ -145,6 +147,27 @@ export function mockExec(command, options = {}) {
     setTimeout(() => {
       if (/\sstatus$/.test(command)) {
         resolve({ errno: 0, stdout: JSON.stringify(MOCK_STATUS), stderr: '' })
+        return
+      }
+      if (/\supdate-status$/.test(command)) {
+        resolve({ errno: 0, stdout: mockUpdateRunning ? 'running' : '0', stderr: '' })
+        return
+      }
+      if (/\supdate-log$/.test(command)) {
+        resolve({ errno: 0, stdout: MOCK_OUTPUT['update-all'], stderr: '' })
+        return
+      }
+      const serviceAction = command.match(/\s(start|stop|restart)\s*$/)?.[1]
+      if (serviceAction) {
+        MOCK_STATUS.serviceRunning = serviceAction === 'start'
+        if (serviceAction === 'restart') setTimeout(() => { MOCK_STATUS.serviceRunning = true }, 2200)
+        resolve({ errno: 0, stdout: MOCK_OUTPUT[serviceAction] || '', stderr: '' })
+        return
+      }
+      if (/\supdate-(all|sub-store|backend|frontend|http-meta)(\s|$)/.test(command)) {
+        mockUpdateRunning = true
+        setTimeout(() => { mockUpdateRunning = false }, 1600)
+        resolve({ errno: 0, stdout: '', stderr: '' })
         return
       }
       if (command.includes('log-size')) {

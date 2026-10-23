@@ -59,3 +59,11 @@ test('pending service actions and malformed addresses have explicit labels', () 
   }), '正在停止')
   assert.equal(compactAddress('not a url'), 'not a url')
 })
+
+test('a stale snapshot is never presented as the current service state', () => {
+  assert.equal(serviceStateText({
+    status: { serviceRunning: true },
+    loading: false,
+    stale: true,
+  }), '状态待确认')
+})

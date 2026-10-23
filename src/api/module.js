@@ -83,7 +83,8 @@ export async function getUpdateLog() {
 // 完成判定靠 webui.sh 在更新进程退出时写的标记，而非日志字节数（大文件下载可能长时间停滞）。
 export async function getUpdateStatus() {
   const result = await runModuleCommand(`sh ${WEBUI_SCRIPT} update-status`)
-  return (result.stdout || 'running').trim()
+  if (!result.ok) throw new Error(result.stderr || '读取更新结果失败')
+  return result.stdout.trim()
 }
 
 function parseJsonOutput(result, fallbackMessage) {
@@ -128,8 +129,10 @@ export async function getAutoUpdateLog() {
 // 服务控制与更新都走这里；命令和参数分开传给 spawn，避免被 shell 当成单个 argv。
 // update-* 在 webui.sh 内不轮转，必须在此先行 log-reset，否则会追加到上次的旧日志。
 export async function runBackground(name, args = []) {
-  await runModuleCommand(`sh ${WEBUI_SCRIPT} log-reset`)
-  if (!isBrowserDev) spawn('sh', [WEBUI_SCRIPT, name, ...args])
+  const reset = await runModuleCommand(`sh ${WEBUI_SCRIPT} log-reset`)
+  if (!reset.ok) return reset
+  if (isBrowserDev) return runModuleCommand(`sh ${WEBUI_SCRIPT} ${name} ${args.join(' ')}`)
+  spawn('sh', [WEBUI_SCRIPT, name, ...args])
   return { ok: true, errno: 0, stdout: '', stderr: '' }
 }
 
